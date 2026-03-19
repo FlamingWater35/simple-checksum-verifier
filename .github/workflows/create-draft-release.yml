@@ -106,14 +106,17 @@ jobs:
           # 4. RPM Package
           cp src-tauri/target/release/bundle/rpm/*.rpm "./dist_assets/Simple-Checksum-Verifier_${ver}_${std_arch}.rpm"
 
-      - name: Create Draft Release
-        uses: softprops/action-gh-release@v2
+      - name: Create or Update Draft Release
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ steps.get_version.outputs.VERSION }}-${{ github.run_number }}
-          name: "Version ${{ steps.get_version.outputs.VERSION }}"
-          target_commitish: main
-          draft: true
-          prerelease: false
-          files: ./dist_assets/*
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ steps.get_version.outputs.VERSION }}-${{ github.run_number }}
+          TITLE: "Version ${{ steps.get_version.outputs.VERSION }}"
+        run: |
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --target main \
+            --draft \
+            --notes "Automated build for Windows and Linux." || true
+
+          gh release upload "$TAG" ./dist_assets/* --clobber
