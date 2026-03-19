@@ -65,6 +65,7 @@ jobs:
           $ver = "v${{ steps.get_version.outputs.VERSION }}"
           mkdir ./dist_assets
 
+          # Detect Architecture
           $msiFile = Get-ChildItem "src-tauri/target/release/bundle/msi/*.msi" | Select-Object -First 1
           if ($msiFile.Name -match "_(x64|x86|arm64)\.msi") { $arch = $Matches[1] } else { $arch = "x64" }
 
@@ -90,6 +91,7 @@ jobs:
           ver="v${{ steps.get_version.outputs.VERSION }}"
           mkdir ./dist_assets
 
+          # Detect Architecture
           deb_path=$(ls src-tauri/target/release/bundle/deb/*.deb | head -n 1)
           raw_arch=$(basename "$deb_path" | cut -d'_' -f3 | cut -d'.' -f1)
           std_arch=$([ "$raw_arch" = "amd64" ] && echo "x86_64" || echo "$raw_arch")
@@ -107,16 +109,16 @@ jobs:
           cp src-tauri/target/release/bundle/rpm/*.rpm "./dist_assets/Simple-Checksum-Verifier_${ver}_${std_arch}.rpm"
 
       - name: Create or Update Draft Release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: v${{ steps.get_version.outputs.VERSION }}-${{ github.run_number }}
-          TITLE: "Version ${{ steps.get_version.outputs.VERSION }}"
-        run: |
-          gh release create "$TAG" \
-            --title "$TITLE" \
-            --target main \
-            --draft \
-            --notes "Automated build for Windows and Linux." || true
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
 
-          gh release upload "$TAG" ./dist_assets/* --clobber
+          tag: v${{ steps.get_version.outputs.VERSION }}-${{ github.run_number }}
+          name: "Version ${{ steps.get_version.outputs.VERSION }}"
+
+          artifacts: "./dist_assets/*"
+          draft: true
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
