@@ -184,7 +184,7 @@
           />
         </div>
 
-        <div class="flex-1 overflow-y-auto pr-2 space-y-3 min-h-0 relative">
+        <div class="flex-1 overflow-y-auto pr-1 min-h-0 relative">
           {#if isLoadingFolders}
             <div class="absolute inset-0 flex items-center justify-center">
               <svg
@@ -213,63 +213,65 @@
               No folder lists found.
             </p>
           {:else}
-            {#each filteredLists as list}
-              <div
-                class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:shadow-md transition bg-gray-50 dark:bg-gray-800/50 flex flex-col {activeVerifyId ===
-                list.id
-                  ? 'ring-2 ring-blue-500'
-                  : ''}"
-              >
-                <div class="flex justify-between items-start mb-2">
-                  <div>
-                    <h3
-                      class="font-semibold text-lg text-gray-900 dark:text-white"
+            <div class="space-y-3 p-1">
+              {#each filteredLists as list}
+                <div
+                  class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:shadow-md transition bg-gray-50 dark:bg-gray-800/50 flex flex-col {activeVerifyId ===
+                  list.id
+                    ? 'ring-2 ring-blue-500'
+                    : ''}"
+                >
+                  <div class="flex justify-between items-start mb-2">
+                    <div>
+                      <h3
+                        class="font-semibold text-lg text-gray-900 dark:text-white"
+                      >
+                        {list.name}
+                      </h3>
+                      <p
+                        class="text-sm text-gray-500 dark:text-gray-400 break-all"
+                      >
+                        {list.path}
+                      </p>
+                    </div>
+                    <button
+                      class="text-red-500 hover:text-red-700 dark:hover:text-red-400 p-1 cursor-pointer transition shrink-0"
+                      onclick={() => requestDelete(list)}
+                      title="Delete"
                     >
-                      {list.name}
-                    </h3>
-                    <p
-                      class="text-sm text-gray-500 dark:text-gray-400 break-all"
-                    >
-                      {list.path}
-                    </p>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
+                    </button>
                   </div>
-                  <button
-                    class="text-red-500 hover:text-red-700 dark:hover:text-red-400 p-1 cursor-pointer transition shrink-0"
-                    onclick={() => requestDelete(list)}
-                    title="Delete"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="h-5 w-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
+                  <div class="flex justify-between items-end mt-2">
+                    <span
+                      class="text-xs text-gray-500 dark:text-gray-400 font-medium"
+                      >{list.total_files} files • {new Date(
+                        list.created_at * 1000,
+                      ).toLocaleDateString()}</span
                     >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                  </button>
+                    <button
+                      class="bg-gray-200 dark:bg-gray-700 hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-700 dark:hover:text-blue-300 text-gray-800 dark:text-gray-200 px-3 py-1 rounded text-sm font-medium transition cursor-pointer shrink-0"
+                      onclick={() => verifyList(list.id)}
+                    >
+                      Verify
+                    </button>
+                  </div>
                 </div>
-                <div class="flex justify-between items-end mt-2">
-                  <span
-                    class="text-xs text-gray-500 dark:text-gray-400 font-medium"
-                    >{list.total_files} files • {new Date(
-                      list.created_at * 1000,
-                    ).toLocaleDateString()}</span
-                  >
-                  <button
-                    class="bg-gray-200 dark:bg-gray-700 hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-700 dark:hover:text-blue-300 text-gray-800 dark:text-gray-200 px-3 py-1 rounded text-sm font-medium transition cursor-pointer shrink-0"
-                    onclick={() => verifyList(list.id)}
-                  >
-                    Verify
-                  </button>
-                </div>
-              </div>
-            {/each}
+              {/each}
+            </div>
           {/if}
         </div>
       </div>
@@ -509,3 +511,38 @@
     </div>
   </div>
 {/if}
+
+<style>
+  :global(html) {
+    color-scheme: light dark;
+  }
+
+  /* Custom modern WebKit scrollbars for Windows Chromium engine */
+  :global(::-webkit-scrollbar) {
+    width: 8px;
+    height: 8px;
+  }
+
+  :global(::-webkit-scrollbar-track) {
+    background: transparent;
+  }
+
+  :global(::-webkit-scrollbar-thumb) {
+    background-color: #cbd5e1;
+    border-radius: 4px;
+  }
+
+  :global(::-webkit-scrollbar-thumb:hover) {
+    background-color: #94a3b8;
+  }
+
+  /* Dark mode scrollbar rules */
+  @media (prefers-color-scheme: dark) {
+    :global(::-webkit-scrollbar-thumb) {
+      background-color: #475569;
+    }
+    :global(::-webkit-scrollbar-thumb:hover) {
+      background-color: #64748b;
+    }
+  }
+</style>
