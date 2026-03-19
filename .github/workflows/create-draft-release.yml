@@ -62,44 +62,49 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          $ver = "${{ steps.get_version.outputs.VERSION }}"
+          $ver = "v${{ steps.get_version.outputs.VERSION }}"
           mkdir ./dist_assets
 
           $msiFile = Get-ChildItem "src-tauri/target/release/bundle/msi/*.msi" | Select-Object -First 1
           if ($msiFile.Name -match "_(x64|x86|arm64)\.msi") { $arch = $Matches[1] } else { $arch = "x64" }
 
-          $base_name = "Simple-Checksum-Verifier_${ver}_Windows_$arch"
+          $base = "Simple-Checksum-Verifier_${ver}_Windows_$arch"
 
+          # 1. NSIS Installer
           $nsis = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
-          cp $nsis.FullName "./dist_assets/$base_name.exe"
+          cp $nsis.FullName "./dist_assets/$base`_Setup.exe"
 
+          # 2. Portable 7z
           $rawBinary = "src-tauri/target/release/simple-checksum-verifier.exe"
-          $portableName = "$base_name`_portable"
-          cp $rawBinary "./$portableName.exe"
-          7z a "./dist_assets/$portableName.7z" "./$portableName.exe"
+          $portableExe = "Simple-Checksum-Verifier.exe"
+          cp $rawBinary "./$portableExe"
+          7z a "./dist_assets/$base`_Portable.7z" "./$portableExe"
 
-          cp $msiFile.FullName "./dist_assets/$base_name.msi"
+          # 3. MSI Installer
+          cp $msiFile.FullName "./dist_assets/$base.msi"
 
       - name: Package Linux Assets
         if: matrix.platform == 'ubuntu-22.04'
         shell: bash
         run: |
-          ver="${{ steps.get_version.outputs.VERSION }}"
+          ver="v${{ steps.get_version.outputs.VERSION }}"
           mkdir ./dist_assets
 
           deb_path=$(ls src-tauri/target/release/bundle/deb/*.deb | head -n 1)
           raw_arch=$(basename "$deb_path" | cut -d'_' -f3 | cut -d'.' -f1)
+          std_arch=$([ "$raw_arch" = "amd64" ] && echo "x86_64" || echo "$raw_arch")
 
-          if [ "$raw_arch" = "amd64" ]; then
-            std_arch="x86_64"
-          else
-            std_arch="$raw_arch"
-          fi
+          # 1. Binary
+          cp src-tauri/target/release/simple-checksum-verifier "./dist_assets/simple-checksum-verifier_${ver}_linux_${std_arch}"
 
-          cp src-tauri/target/release/simple-checksum-verifier "./dist_assets/Simple-Checksum-Verifier_${ver}_Linux_${std_arch}"
-          cp src-tauri/target/release/bundle/appimage/*.AppImage "./dist_assets/Simple-Checksum-Verifier_${ver}_Linux_${std_arch}.AppImage"
-          cp "$deb_path" "./dist_assets/Simple-Checksum-Verifier_${ver}_Linux_${raw_arch}.deb"
-          cp src-tauri/target/release/bundle/rpm/*.rpm "./dist_assets/Simple-Checksum-Verifier_${ver}_Linux_${std_arch}.rpm"
+          # 2. AppImage
+          cp src-tauri/target/release/bundle/appimage/*.AppImage "./dist_assets/Simple-Checksum-Verifier_${ver}_${std_arch}.AppImage"
+
+          # 3. Debian Package
+          cp "$deb_path" "./dist_assets/Simple-Checksum-Verifier_${ver}_${raw_arch}.deb"
+
+          # 4. RPM Package
+          cp src-tauri/target/release/bundle/rpm/*.rpm "./dist_assets/Simple-Checksum-Verifier_${ver}_${std_arch}.rpm"
 
       - name: Create Draft Release
         uses: softprops/action-gh-release@v1
