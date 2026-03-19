@@ -23,12 +23,12 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
 
       - name: Install Rust stable
@@ -107,7 +107,7 @@ jobs:
           cp src-tauri/target/release/bundle/rpm/*.rpm "./dist_assets/Simple-Checksum-Verifier_${ver}_${std_arch}.rpm"
 
       - name: Create Draft Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
