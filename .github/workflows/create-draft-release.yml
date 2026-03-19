@@ -14,7 +14,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [windows-latest, ubuntu-22.04]
+        include:
+          - platform: windows-latest
+            os_name: Windows
+            extension: .exe
+          - platform: ubuntu-22.04
+            os_name: Linux
+            extension: ""
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -27,7 +33,7 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: Install Rust
+      - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install Linux dependencies
@@ -35,26 +41,55 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libssl-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+            libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev \
+            libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Install frontend dependencies
         run: npm install
 
-      - name: Build Tauri app and create release
-        uses: tauri-apps/tauri-action@v0
+      - name: Sync SvelteKit
+        run: npx svelte-kit sync
+
+      - name: Get version
+        id: get_version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build Tauri App
+        run: npm run tauri build
+
+      - name: Package Windows Assets
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.get_version.outputs.VERSION }}"
+          $base_name = "Simple-Checksum-Verifier_${ver}_Windows_x64"
+          mkdir ./dist_assets
+
+          cp src-tauri/target/release/bundle/nsis/*.exe "./dist_assets/$base_name.exe"
+          7z a "./dist_assets/$base_name.7z" "./dist_assets/$base_name.exe"
+          cp src-tauri/target/release/bundle/msi/*.msi "./dist_assets/$base_name.msi"
+
+      - name: Package Linux Assets
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          ver="${{ steps.get_version.outputs.VERSION }}"
+          base_name="Simple-Checksum-Verifier_${ver}_Linux_x64"
+          mkdir ./dist_assets
+
+          cp src-tauri/target/release/simple-checksum-verifier "./dist_assets/$base_name"
+          cp src-tauri/target/release/bundle/appimage/*.AppImage "./dist_assets/$base_name.AppImage"
+
+      - name: Create Draft Release
+        uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__-${{ github.run_number }}
-          releaseName: "Version __VERSION__ (Build ${{ github.run_number }})"
-          releaseBody: "Automated draft release."
-          releaseDraft: true
+          tag_name: v${{ steps.get_version.outputs.VERSION }}-${{ github.run_number }}
+          name: "Version ${{ steps.get_version.outputs.VERSION }}"
+          draft: true
           prerelease: false
+          files: ./dist_assets/*
