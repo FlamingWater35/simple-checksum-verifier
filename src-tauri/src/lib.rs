@@ -97,6 +97,19 @@ fn hash_file(path: &Path, cancel_flag: &Arc<AtomicBool>) -> std::io::Result<Opti
 }
 
 #[tauri::command]
+fn get_app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
+#[tauri::command]
+fn open_url(app: AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn get_folder_lists(app: AppHandle) -> Result<Vec<FolderListSummary>, String> {
     let dir = get_lists_dir(&app)?;
     let mut summaries = Vec::new();
@@ -551,6 +564,8 @@ pub fn run() {
             cancel_flag: Arc::new(AtomicBool::new(false)),
         })
         .invoke_handler(tauri::generate_handler![
+            get_app_version,
+            open_url,
             get_folder_lists,
             select_folder,
             generate_checksums,

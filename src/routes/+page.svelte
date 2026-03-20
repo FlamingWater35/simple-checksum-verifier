@@ -20,6 +20,13 @@
   let searchQuery: string = $state("");
   let isLoadingFolders = $state(true);
 
+  // App Update State
+  let currentVersion: string = $state("");
+  let latestVersion: string = $state("");
+  let releaseUrl: string = $state("");
+  let updateAvailable: boolean = $state(false);
+  let showUpdateDialog: boolean = $state(false);
+
   // Create Dialog State
   let showCreateDialog = $state(false);
   let selectedPath = $state("");
@@ -55,10 +62,53 @@
     await fetchFolderLists();
     isLoadingFolders = false;
 
+    await checkForUpdates();
+
     listen<Progress>("operation_progress", (event) => {
       operationProgress = event.payload;
     });
   });
+
+  async function checkForUpdates() {
+    try {
+      currentVersion = await invoke("get_app_version");
+      const res = await fetch(
+        "https://api.github.com/repos/FlamingWater35/simple-checksum-verifier/releases/latest",
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        const tag = data.tag_name || "";
+        latestVersion = tag.replace(/^v/, "");
+        releaseUrl = data.html_url;
+
+        if (latestVersion && currentVersion) {
+          const curParts = currentVersion.split(".").map(Number);
+          const latParts = latestVersion.split(".").map(Number);
+
+          for (let i = 0; i < Math.max(curParts.length, latParts.length); i++) {
+            const pCur = curParts[i] || 0;
+            const pLat = latParts[i] || 0;
+            if (pLat > pCur) {
+              updateAvailable = true;
+              break;
+            } else if (pLat < pCur) {
+              break;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to check for updates:", e);
+    }
+  }
+
+  async function openReleasePage() {
+    if (releaseUrl) {
+      await invoke("open_url", { url: releaseUrl });
+      showUpdateDialog = false;
+    }
+  }
 
   async function fetchFolderLists() {
     folderLists = await invoke("get_folder_lists");
@@ -237,7 +287,6 @@
   }
 </script>
 
-<!-- Global key handler -->
 <svelte:window
   onkeydown={(e) => {
     if (e.key === "Escape") {
@@ -246,6 +295,7 @@
       else if (showDuplicateWarningDialog) cancelDuplicateWarning();
       else if (showDeleteDialog) closeDeleteDialog();
       else if (showManageBackupsDialog) showManageBackupsDialog = false;
+      else if (showUpdateDialog) showUpdateDialog = false;
     }
   }}
 />
@@ -259,13 +309,44 @@
       <h1 class="text-3xl font-bold text-gray-900 dark:text-white">
         Checksum Verifier
       </h1>
-      <button
-        class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg shadow font-medium transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        onclick={openFolderPicker}
-        disabled={isBusy}
-      >
-        + Add Folder
-      </button>
+      <div class="flex items-center">
+        {#if updateAvailable}
+          <button
+            class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 mr-4 p-2 rounded-full hover:bg-blue-100 dark:hover:bg-gray-800 transition-colors cursor-pointer relative"
+            onclick={() => (showUpdateDialog = true)}
+            title="Update Available"
+          >
+            <svg
+              class="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+              ></path>
+            </svg>
+            <span class="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+              <span
+                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"
+              ></span>
+              <span
+                class="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500"
+              ></span>
+            </span>
+          </button>
+        {/if}
+        <button
+          class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg shadow font-medium transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          onclick={openFolderPicker}
+          disabled={isBusy}
+        >
+          + Add Folder
+        </button>
+      </div>
     </header>
 
     <!-- Main Content Grid -->
@@ -530,6 +611,80 @@
     </div>
   </div>
 </div>
+
+<!-- Update Available Dialog -->
+{#if showUpdateDialog}
+  <div
+    class="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center p-4 z-50"
+  >
+    <div
+      class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm p-6"
+    >
+      <h2
+        class="text-xl font-bold mb-4 text-gray-900 dark:text-white flex items-center"
+      >
+        <svg
+          class="w-6 h-6 mr-2 text-blue-500"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M13 10V3L4 14h7v7l9-11h-7z"
+          ></path>
+        </svg>
+        Update Available
+      </h2>
+
+      <div class="mb-6 text-gray-600 dark:text-gray-300 space-y-3">
+        <p class="text-sm">
+          A new version of Simple Checksum Verifier is available for download.
+        </p>
+
+        <div class="space-y-2 text-sm mt-4">
+          <div
+            class="flex justify-between items-center bg-gray-50 dark:bg-gray-700 p-2.5 rounded-lg border border-gray-200 dark:border-gray-600"
+          >
+            <span class="font-medium text-gray-600 dark:text-gray-400"
+              >Installed Version:</span
+            >
+            <span class="font-mono text-gray-800 dark:text-gray-200"
+              >v{currentVersion}</span
+            >
+          </div>
+          <div
+            class="flex justify-between items-center bg-green-50 dark:bg-green-900/30 p-2.5 rounded-lg border border-green-200 dark:border-green-800"
+          >
+            <span class="font-medium text-green-700 dark:text-green-400"
+              >Latest Version:</span
+            >
+            <span class="font-mono font-bold text-green-700 dark:text-green-400"
+              >v{latestVersion}</span
+            >
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end space-x-3">
+        <button
+          class="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition font-medium cursor-pointer"
+          onclick={() => (showUpdateDialog = false)}
+        >
+          Close
+        </button>
+        <button
+          class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition font-medium cursor-pointer"
+          onclick={openReleasePage}
+        >
+          View Release
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Manage Backups Dialog -->
 {#if showManageBackupsDialog && activeBackupList}
