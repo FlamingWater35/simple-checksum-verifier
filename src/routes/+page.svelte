@@ -328,10 +328,11 @@
                     ? 'ring-2 ring-blue-500'
                     : ''}"
                 >
-                  <div class="flex justify-between items-start mb-2">
-                    <div>
+                  <div class="flex justify-between items-start mb-2 gap-2">
+                    <div class="min-w-0 flex-1">
                       <h3
-                        class="font-semibold text-lg text-gray-900 dark:text-white"
+                        class="font-semibold text-lg text-gray-900 dark:text-white truncate"
+                        title={list.name}
                       >
                         {list.name}
                       </h3>
@@ -363,20 +364,20 @@
                       </svg>
                     </button>
                   </div>
-                  <div class="flex justify-between items-end mt-2">
+
+                  <div
+                    class="flex flex-wrap justify-between items-center gap-3 mt-2"
+                  >
                     <span
-                      class="text-xs text-gray-500 dark:text-gray-400 font-medium"
+                      class="text-xs text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap"
                     >
                       {list.total_files.toLocaleString()} files • {new Date(
                         list.created_at * 1000,
-                      ).toLocaleString(undefined, {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })}
+                      ).toLocaleDateString(undefined, { dateStyle: "medium" })}
                     </span>
-                    <div class="flex space-x-2">
+                    <div class="flex flex-wrap gap-2">
                       <button
-                        class="bg-gray-200 dark:bg-gray-700 hover:bg-orange-100 dark:hover:bg-orange-900 hover:text-orange-700 dark:hover:text-orange-300 text-gray-800 dark:text-gray-200 px-3 py-1 rounded text-sm font-medium transition cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                        class="bg-gray-200 dark:bg-gray-700 hover:bg-orange-100 dark:hover:bg-orange-900 hover:text-orange-700 dark:hover:text-orange-300 text-gray-800 dark:text-gray-200 px-3 py-1 rounded text-sm font-medium transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         onclick={() => openManageBackups(list)}
                         disabled={isBusy}
                         title="Manage Backups"
@@ -384,7 +385,7 @@
                         Backups ({list.backups?.length || 0})
                       </button>
                       <button
-                        class="bg-gray-200 dark:bg-gray-700 hover:bg-green-100 dark:hover:bg-green-900 hover:text-green-700 dark:hover:text-green-300 text-gray-800 dark:text-gray-200 px-3 py-1 rounded text-sm font-medium transition cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                        class="bg-gray-200 dark:bg-gray-700 hover:bg-green-100 dark:hover:bg-green-900 hover:text-green-700 dark:hover:text-green-300 text-gray-800 dark:text-gray-200 px-3 py-1 rounded text-sm font-medium transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         onclick={() => rehashList(list.id)}
                         disabled={isBusy}
                         title="Update Checksums"
@@ -392,7 +393,7 @@
                         Update
                       </button>
                       <button
-                        class="bg-gray-200 dark:bg-gray-700 hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-700 dark:hover:text-blue-300 text-gray-800 dark:text-gray-200 px-3 py-1 rounded text-sm font-medium transition cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                        class="bg-gray-200 dark:bg-gray-700 hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-700 dark:hover:text-blue-300 text-gray-800 dark:text-gray-200 px-3 py-1 rounded text-sm font-medium transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         onclick={() => verifyList(list.id)}
                         disabled={isBusy}
                       >
