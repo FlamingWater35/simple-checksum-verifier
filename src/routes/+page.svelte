@@ -55,7 +55,6 @@
     await fetchFolderLists();
     isLoadingFolders = false;
 
-    // A single unified listener for all progress bars
     listen<Progress>("operation_progress", (event) => {
       operationProgress = event.payload;
     });
@@ -134,7 +133,6 @@
   async function addBackupLocation() {
     const path = await invoke<string | null>("select_folder");
     if (path && activeBackupList) {
-      // Prevent adding the main path or existing backups
       if (
         !activeBackupList.backups.includes(path) &&
         path !== activeBackupList.path
@@ -238,6 +236,19 @@
     folderToDelete = null;
   }
 </script>
+
+<!-- Global key handler -->
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === "Escape") {
+      if (showCreateDialog && currentOperation !== "generating")
+        showCreateDialog = false;
+      else if (showDuplicateWarningDialog) cancelDuplicateWarning();
+      else if (showDeleteDialog) closeDeleteDialog();
+      else if (showManageBackupsDialog) showManageBackupsDialog = false;
+    }
+  }}
+/>
 
 <div
   class="h-screen w-full overflow-hidden bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 p-6 flex flex-col font-sans transition-colors duration-200"
@@ -355,10 +366,14 @@
                   <div class="flex justify-between items-end mt-2">
                     <span
                       class="text-xs text-gray-500 dark:text-gray-400 font-medium"
-                      >{list.total_files} files • {new Date(
-                        list.created_at * 1000,
-                      ).toLocaleDateString()}</span
                     >
+                      {list.total_files.toLocaleString()} files • {new Date(
+                        list.created_at * 1000,
+                      ).toLocaleString(undefined, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}
+                    </span>
                     <div class="flex space-x-2">
                       <button
                         class="bg-gray-200 dark:bg-gray-700 hover:bg-orange-100 dark:hover:bg-orange-900 hover:text-orange-700 dark:hover:text-orange-300 text-gray-800 dark:text-gray-200 px-3 py-1 rounded text-sm font-medium transition cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -417,12 +432,25 @@
                     ? "Updating checksums..."
                     : `Verifying ${operationProgress.current_location}...`}
                 </p>
-                <button
-                  class="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800 px-3 py-1 rounded text-xs font-medium transition cursor-pointer"
-                  onclick={cancelOperation}
-                >
-                  Stop
-                </button>
+                <div class="flex items-center space-x-3">
+                  <span
+                    class="text-xs font-semibold text-blue-600 dark:text-blue-400"
+                  >
+                    {operationProgress.total > 0
+                      ? Math.round(
+                          (operationProgress.processed /
+                            operationProgress.total) *
+                            100,
+                        )
+                      : 0}%
+                  </span>
+                  <button
+                    class="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800 px-3 py-1 rounded text-xs font-medium transition cursor-pointer"
+                    onclick={cancelOperation}
+                  >
+                    Stop
+                  </button>
+                </div>
               </div>
               <div
                 class="w-full bg-blue-200 dark:bg-blue-900/50 rounded-full h-2.5 mb-2"
@@ -436,7 +464,8 @@
                 ></div>
               </div>
               <p class="text-xs text-blue-600 dark:text-blue-400 truncate">
-                {operationProgress.processed} / {operationProgress.total} - {operationProgress.current_file}
+                {operationProgress.processed.toLocaleString()} / {operationProgress.total.toLocaleString()}
+                - {operationProgress.current_file}
               </p>
             </div>
           {:else if verifyResult}
@@ -687,12 +716,24 @@
             <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
               Generating checksums...
             </p>
-            <button
-              class="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800 px-3 py-1 rounded text-xs font-medium transition cursor-pointer"
-              onclick={cancelOperation}
-            >
-              Stop
-            </button>
+            <div class="flex items-center space-x-3">
+              <span
+                class="text-xs font-semibold text-blue-600 dark:text-blue-400"
+              >
+                {operationProgress.total > 0
+                  ? Math.round(
+                      (operationProgress.processed / operationProgress.total) *
+                        100,
+                    )
+                  : 0}%
+              </span>
+              <button
+                class="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800 px-3 py-1 rounded text-xs font-medium transition cursor-pointer"
+                onclick={cancelOperation}
+              >
+                Stop
+              </button>
+            </div>
           </div>
           <div
             class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 mb-2"
@@ -705,7 +746,8 @@
             ></div>
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400 truncate">
-            {operationProgress.processed} / {operationProgress.total} - {operationProgress.current_file}
+            {operationProgress.processed.toLocaleString()} / {operationProgress.total.toLocaleString()}
+            - {operationProgress.current_file}
           </p>
         </div>
       {/if}

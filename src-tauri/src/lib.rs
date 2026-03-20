@@ -6,6 +6,7 @@ use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager, State};
 use walkdir::WalkDir;
 
@@ -69,7 +70,7 @@ struct FullVerifyResult {
     backups: Vec<BackupVerifyResult>,
 }
 
-// Stores the config lists in %LOCALAPPDATA%\simple-checksum-verifier\folder_lists\
+// Stores the config lists in %LOCALAPPDATA%
 fn get_lists_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let mut path = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
     path.push("folder_lists");
@@ -138,6 +139,66 @@ fn cancel_operation(state: State<'_, AppState>) {
     state.cancel_flag.store(true, Ordering::Relaxed);
 }
 
+fn compute_folder_checksums(
+    target_path: &Path,
+    cancel: &Arc<AtomicBool>,
+    app_handle: &AppHandle,
+    location_label: &str,
+) -> Result<(HashMap<String, String>, usize), String> {
+    let mut total_files = 0;
+    for entry in WalkDir::new(target_path).into_iter().filter_map(|e| e.ok()) {
+        if entry.file_type().is_file() {
+            total_files += 1;
+        }
+    }
+
+    let mut checksums = HashMap::new();
+    let mut processed = 0;
+    let mut last_emit = Instant::now();
+
+    for entry in WalkDir::new(target_path).into_iter().filter_map(|e| e.ok()) {
+        if cancel.load(Ordering::Relaxed) {
+            return Err("Cancelled".into());
+        }
+
+        if entry.file_type().is_file() {
+            let file_path = entry.path();
+            let relative_path = file_path
+                .strip_prefix(target_path)
+                .unwrap()
+                .to_string_lossy()
+                .to_string()
+                .replace("\\", "/");
+
+            match hash_file(file_path, cancel) {
+                Ok(Some(hash)) => {
+                    checksums.insert(relative_path.clone(), hash);
+                }
+                Ok(None) => return Err("Cancelled".into()),
+                Err(_) => {} // skip unreadable
+            }
+
+            processed += 1;
+            let now = Instant::now();
+
+            // Throttle IPC events
+            if processed == total_files || now.duration_since(last_emit).as_millis() >= 50 {
+                let _ = app_handle.emit(
+                    "operation_progress",
+                    Progress {
+                        total: total_files,
+                        processed,
+                        current_file: relative_path,
+                        current_location: location_label.to_string(),
+                    },
+                );
+                last_emit = now;
+            }
+        }
+    }
+    Ok((checksums, total_files))
+}
+
 #[tauri::command]
 async fn generate_checksums(
     app: AppHandle,
@@ -155,52 +216,8 @@ async fn generate_checksums(
     let app_handle = app.clone();
 
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let mut total_files = 0;
-        for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()) {
-            if entry.file_type().is_file() {
-                total_files += 1;
-            }
-        }
-
-        let mut checksums = HashMap::new();
-        let mut processed = 0;
-
-        for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()) {
-            if cancel.load(Ordering::Relaxed) {
-                return Err("Cancelled".into());
-            }
-
-            if entry.file_type().is_file() {
-                let file_path = entry.path();
-                let relative_path = file_path
-                    .strip_prefix(&path)
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string()
-                    .replace("\\", "/");
-
-                match hash_file(file_path, &cancel) {
-                    Ok(Some(hash)) => {
-                        checksums.insert(relative_path.clone(), hash);
-                    }
-                    Ok(None) => return Err("Cancelled".into()),
-                    Err(e) => return Err(e.to_string()),
-                }
-
-                processed += 1;
-                if processed % 10 == 0 || processed == total_files {
-                    let _ = app_handle.emit(
-                        "operation_progress",
-                        Progress {
-                            total: total_files,
-                            processed,
-                            current_file: relative_path,
-                            current_location: "Main Folder".to_string(),
-                        },
-                    );
-                }
-            }
-        }
+        let (checksums, total_files) =
+            compute_folder_checksums(&path, &cancel, &app_handle, "Main Folder")?;
 
         let id = uuid::Uuid::new_v4().to_string();
         let list = FolderList {
@@ -248,58 +265,8 @@ async fn rehash_folder(
     let app_handle = app.clone();
 
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let mut total_files = 0;
-        for entry in WalkDir::new(&target_path_buf)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            if entry.file_type().is_file() {
-                total_files += 1;
-            }
-        }
-
-        let mut checksums = HashMap::new();
-        let mut processed = 0;
-
-        for entry in WalkDir::new(&target_path_buf)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            if cancel.load(Ordering::Relaxed) {
-                return Err("Cancelled".into());
-            }
-
-            if entry.file_type().is_file() {
-                let file_path = entry.path();
-                let relative_path = file_path
-                    .strip_prefix(&target_path_buf)
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string()
-                    .replace("\\", "/");
-
-                match hash_file(file_path, &cancel) {
-                    Ok(Some(hash)) => {
-                        checksums.insert(relative_path.clone(), hash);
-                    }
-                    Ok(None) => return Err("Cancelled".into()),
-                    Err(e) => return Err(e.to_string()),
-                }
-
-                processed += 1;
-                if processed % 10 == 0 || processed == total_files {
-                    let _ = app_handle.emit(
-                        "operation_progress",
-                        Progress {
-                            total: total_files,
-                            processed,
-                            current_file: relative_path,
-                            current_location: "Main Folder".to_string(),
-                        },
-                    );
-                }
-            }
-        }
+        let (checksums, total_files) =
+            compute_folder_checksums(&target_path_buf, &cancel, &app_handle, "Main Folder")?;
 
         let list = FolderList {
             id: id.clone(),
@@ -349,7 +316,6 @@ fn delete_folder_list(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
-// Helper to verify a single directory against the saved checksums snapshot
 fn verify_single_path(
     target_path_str: &str,
     saved_checksums: &HashMap<String, String>,
@@ -373,6 +339,7 @@ fn verify_single_path(
 
     let mut disk_checksums = HashMap::new();
     let mut processed = 0;
+    let mut last_emit = Instant::now();
 
     if target_path.exists() {
         for entry in WalkDir::new(&target_path)
@@ -397,11 +364,14 @@ fn verify_single_path(
                         disk_checksums.insert(relative_path.clone(), hash);
                     }
                     Ok(None) => return Err("Cancelled".into()),
-                    Err(_) => {} // skip or handle unreadable
+                    Err(_) => {}
                 }
 
                 processed += 1;
-                if processed % 10 == 0 || processed == total_files_on_disk {
+                let now = Instant::now();
+                if processed == total_files_on_disk
+                    || now.duration_since(last_emit).as_millis() >= 50
+                {
                     let _ = app_handle.emit(
                         "operation_progress",
                         Progress {
@@ -411,6 +381,7 @@ fn verify_single_path(
                             current_location: location_label.to_string(),
                         },
                     );
+                    last_emit = now;
                 }
             }
         }
@@ -539,7 +510,6 @@ async fn verify_folder_contents(
     let app_handle = app.clone();
 
     tokio::task::spawn_blocking(move || -> Result<FullVerifyResult, String> {
-        // Verify main directory
         let main_tree = verify_single_path(
             &saved_list.path,
             &saved_list.checksums,
@@ -548,7 +518,6 @@ async fn verify_folder_contents(
             "Main Folder",
         )?;
 
-        // Verify backups
         let mut backups_results = Vec::new();
         for (idx, backup_path) in saved_list.backups.iter().enumerate() {
             let label = format!("Backup {}", idx + 1);
