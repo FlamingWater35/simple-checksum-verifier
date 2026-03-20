@@ -3,7 +3,11 @@
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import TreeItem from "./TreeItem.svelte";
-  import type { FolderListSummary, Progress, TreeNode } from "$lib/types";
+  import type {
+    FolderListSummary,
+    Progress,
+    FullVerifyResult,
+  } from "$lib/types";
 
   // Operation Control State
   type OperationType = "none" | "generating" | "verifying" | "rehashing";
@@ -29,9 +33,14 @@
   let showDeleteDialog = $state(false);
   let folderToDelete: FolderListSummary | null = $state(null);
 
+  // Manage Backups Dialog State
+  let showManageBackupsDialog = $state(false);
+  let activeBackupList: FolderListSummary | null = $state(null);
+
   // Verification & Rehash State
-  let verifyResult: TreeNode | null = $state(null);
+  let verifyResult: FullVerifyResult | null = $state(null);
   let activeVerifyId: string | null = $state(null);
+  let selectedVerifyTab: number = $state(0); // 0 = main, 1+ = backups
 
   // Computed Values
   let filteredLists = $derived(
@@ -95,7 +104,12 @@
   async function startGeneration() {
     if (!selectedPath || !newFolderName || isBusy) return;
     currentOperation = "generating";
-    operationProgress = { total: 0, processed: 0, current_file: "Starting..." };
+    operationProgress = {
+      total: 0,
+      processed: 0,
+      current_file: "Starting...",
+      current_location: "Main Folder",
+    };
 
     try {
       await invoke("generate_checksums", {
@@ -111,12 +125,61 @@
     }
   }
 
+  function openManageBackups(list: FolderListSummary) {
+    if (isBusy) return;
+    activeBackupList = list;
+    showManageBackupsDialog = true;
+  }
+
+  async function addBackupLocation() {
+    const path = await invoke<string | null>("select_folder");
+    if (path && activeBackupList) {
+      // Prevent adding the main path or existing backups
+      if (
+        !activeBackupList.backups.includes(path) &&
+        path !== activeBackupList.path
+      ) {
+        const newBackups = [...activeBackupList.backups, path];
+        await invoke("update_backups", {
+          id: activeBackupList.id,
+          backups: newBackups,
+        });
+        await fetchFolderLists();
+        activeBackupList =
+          folderLists.find((l) => l.id === activeBackupList!.id) || null;
+      } else {
+        alert(
+          "This folder is already set as the main path or a backup location.",
+        );
+      }
+    }
+  }
+
+  async function removeBackupLocation(path: string) {
+    if (activeBackupList) {
+      const newBackups = activeBackupList.backups.filter((b) => b !== path);
+      await invoke("update_backups", {
+        id: activeBackupList.id,
+        backups: newBackups,
+      });
+      await fetchFolderLists();
+      activeBackupList =
+        folderLists.find((l) => l.id === activeBackupList!.id) || null;
+    }
+  }
+
   async function rehashList(id: string) {
     if (isBusy) return;
     activeVerifyId = id;
     verifyResult = null;
+    selectedVerifyTab = 0;
     currentOperation = "rehashing";
-    operationProgress = { total: 0, processed: 0, current_file: "Starting..." };
+    operationProgress = {
+      total: 0,
+      processed: 0,
+      current_file: "Starting...",
+      current_location: "Main Folder",
+    };
 
     try {
       await invoke("rehash_folder", { id });
@@ -132,11 +195,19 @@
     if (isBusy) return;
     activeVerifyId = id;
     verifyResult = null;
+    selectedVerifyTab = 0;
     currentOperation = "verifying";
-    operationProgress = { total: 0, processed: 0, current_file: "Starting..." };
+    operationProgress = {
+      total: 0,
+      processed: 0,
+      current_file: "Starting...",
+      current_location: "Starting...",
+    };
 
     try {
-      verifyResult = await invoke<TreeNode>("verify_folder_contents", { id });
+      verifyResult = await invoke<FullVerifyResult>("verify_folder_contents", {
+        id,
+      });
     } catch (e) {
       if (e !== "Cancelled") alert("Error: " + e);
     } finally {
@@ -290,6 +361,14 @@
                     >
                     <div class="flex space-x-2">
                       <button
+                        class="bg-gray-200 dark:bg-gray-700 hover:bg-orange-100 dark:hover:bg-orange-900 hover:text-orange-700 dark:hover:text-orange-300 text-gray-800 dark:text-gray-200 px-3 py-1 rounded text-sm font-medium transition cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onclick={() => openManageBackups(list)}
+                        disabled={isBusy}
+                        title="Manage Backups"
+                      >
+                        Backups ({list.backups?.length || 0})
+                      </button>
+                      <button
                         class="bg-gray-200 dark:bg-gray-700 hover:bg-green-100 dark:hover:bg-green-900 hover:text-green-700 dark:hover:text-green-300 text-gray-800 dark:text-gray-200 px-3 py-1 rounded text-sm font-medium transition cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                         onclick={() => rehashList(list.id)}
                         disabled={isBusy}
@@ -336,7 +415,7 @@
                 <p class="text-sm font-medium text-blue-800 dark:text-blue-300">
                   {currentOperation === "rehashing"
                     ? "Updating checksums..."
-                    : "Verifying files..."}
+                    : `Verifying ${operationProgress.current_location}...`}
                 </p>
                 <button
                   class="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800 px-3 py-1 rounded text-xs font-medium transition cursor-pointer"
@@ -361,10 +440,47 @@
               </p>
             </div>
           {:else if verifyResult}
-            <div
-              class="flex-1 overflow-y-auto p-2 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900/50 min-h-0"
-            >
-              <TreeItem node={verifyResult} defaultOpen={true} />
+            <div class="flex flex-col flex-1 min-h-0">
+              <!-- Tab Bar for Locations -->
+              <div
+                class="flex border-b border-gray-200 dark:border-gray-700 mb-2 overflow-x-auto hide-scrollbar shrink-0"
+              >
+                <button
+                  class="px-4 py-2 font-medium text-sm transition-colors cursor-pointer whitespace-nowrap {selectedVerifyTab ===
+                  0
+                    ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}"
+                  onclick={() => (selectedVerifyTab = 0)}
+                >
+                  Main Folder
+                </button>
+                {#each verifyResult.backups as backup, i}
+                  <button
+                    class="px-4 py-2 font-medium text-sm transition-colors cursor-pointer whitespace-nowrap max-w-37.5 truncate {selectedVerifyTab ===
+                    i + 1
+                      ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}"
+                    onclick={() => (selectedVerifyTab = i + 1)}
+                    title={backup.path}
+                  >
+                    Backup {i + 1}
+                  </button>
+                {/each}
+              </div>
+
+              <!-- Tree Output -->
+              <div
+                class="flex-1 overflow-y-auto p-2 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900/50 min-h-0"
+              >
+                {#if selectedVerifyTab === 0}
+                  <TreeItem node={verifyResult.main} defaultOpen={true} />
+                {:else if verifyResult.backups[selectedVerifyTab - 1]}
+                  <TreeItem
+                    node={verifyResult.backups[selectedVerifyTab - 1].tree}
+                    defaultOpen={true}
+                  />
+                {/if}
+              </div>
             </div>
           {:else}
             <div
@@ -384,6 +500,85 @@
     </div>
   </div>
 </div>
+
+<!-- Manage Backups Dialog -->
+{#if showManageBackupsDialog && activeBackupList}
+  <div
+    class="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center p-4 z-50"
+  >
+    <div
+      class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg p-6 flex flex-col max-h-[80vh]"
+    >
+      <h2 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">
+        Manage Backups
+      </h2>
+      <p
+        class="text-sm text-gray-500 dark:text-gray-400 mb-4 truncate"
+        title={activeBackupList.path}
+      >
+        For: {activeBackupList.name}
+      </p>
+
+      <div
+        class="flex-1 overflow-y-auto mb-4 border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50 space-y-2"
+      >
+        {#if activeBackupList.backups && activeBackupList.backups.length > 0}
+          {#each activeBackupList.backups as backup}
+            <div
+              class="flex justify-between items-center p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-sm"
+            >
+              <span
+                class="text-sm text-gray-700 dark:text-gray-300 truncate mr-2"
+                title={backup}>{backup}</span
+              >
+              <button
+                class="text-red-500 hover:text-red-700 dark:hover:text-red-400 p-1 cursor-pointer transition shrink-0"
+                onclick={() => removeBackupLocation(backup)}
+                title="Remove Backup"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              </button>
+            </div>
+          {/each}
+        {:else}
+          <div
+            class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm py-4"
+          >
+            No backup locations configured.
+          </div>
+        {/if}
+      </div>
+
+      <div class="flex justify-between space-x-3 mt-auto">
+        <button
+          class="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white transition font-medium cursor-pointer"
+          onclick={addBackupLocation}
+        >
+          + Add Backup Location
+        </button>
+        <button
+          class="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition font-medium cursor-pointer"
+          onclick={() => (showManageBackupsDialog = false)}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Duplicate Folder Warning Dialog -->
 {#if showDuplicateWarningDialog}
@@ -577,6 +772,14 @@
 <style>
   :global(html) {
     color-scheme: light dark;
+  }
+
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 
   :global(::-webkit-scrollbar) {

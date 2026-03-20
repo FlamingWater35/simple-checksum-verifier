@@ -21,6 +21,8 @@ struct FolderList {
     created_at: u64,
     total_files: usize,
     checksums: HashMap<String, String>,
+    #[serde(default)]
+    backups: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -30,6 +32,7 @@ struct FolderListSummary {
     path: String,
     created_at: u64,
     total_files: usize,
+    backups: Vec<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -37,6 +40,7 @@ struct Progress {
     total: usize,
     processed: usize,
     current_file: String,
+    current_location: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -53,6 +57,18 @@ enum TreeNode {
     },
 }
 
+#[derive(Serialize)]
+struct BackupVerifyResult {
+    path: String,
+    tree: TreeNode,
+}
+
+#[derive(Serialize)]
+struct FullVerifyResult {
+    main: TreeNode,
+    backups: Vec<BackupVerifyResult>,
+}
+
 // Stores the config lists in %LOCALAPPDATA%\simple-checksum-verifier\folder_lists\
 fn get_lists_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let mut path = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
@@ -61,15 +77,14 @@ fn get_lists_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-// Hashes a file in 64KB chunks and checks for cancellation dynamically
 fn hash_file(path: &Path, cancel_flag: &Arc<AtomicBool>) -> std::io::Result<Option<String>> {
     let file = fs::File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut hasher = Sha256::new();
-    let mut buffer = [0; 65536]; // 64KB buffer for high-speed hashing
+    let mut buffer = [0; 65536];
     loop {
         if cancel_flag.load(Ordering::Relaxed) {
-            return Ok(None); // Early cancellation
+            return Ok(None);
         }
         let count = reader.read(&mut buffer)?;
         if count == 0 {
@@ -100,6 +115,7 @@ fn get_folder_lists(app: AppHandle) -> Result<Vec<FolderListSummary>, String> {
                             path: list.path,
                             created_at: list.created_at,
                             total_files: list.total_files,
+                            backups: list.backups,
                         });
                     }
                 }
@@ -179,6 +195,7 @@ async fn generate_checksums(
                             total: total_files,
                             processed,
                             current_file: relative_path,
+                            current_location: "Main Folder".to_string(),
                         },
                     );
                 }
@@ -196,6 +213,7 @@ async fn generate_checksums(
                 .as_secs(),
             total_files,
             checksums,
+            backups: Vec::new(),
         };
 
         let mut out_path = get_lists_dir(&app_handle)?;
@@ -276,6 +294,7 @@ async fn rehash_folder(
                             total: total_files,
                             processed,
                             current_file: relative_path,
+                            current_location: "Main Folder".to_string(),
                         },
                     );
                 }
@@ -292,6 +311,7 @@ async fn rehash_folder(
                 .as_secs(),
             total_files,
             checksums,
+            backups: saved_list.backups.clone(),
         };
 
         let mut out_path = get_lists_dir(&app_handle)?;
@@ -306,6 +326,20 @@ async fn rehash_folder(
 }
 
 #[tauri::command]
+fn update_backups(app: AppHandle, id: String, backups: Vec<String>) -> Result<(), String> {
+    let mut path = get_lists_dir(&app)?;
+    path.push(format!("{}.json", id));
+    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut list: FolderList = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    list.backups = backups;
+
+    let json = serde_json::to_string(&list).map_err(|e| e.to_string())?;
+    fs::write(path, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 fn delete_folder_list(app: AppHandle, id: String) -> Result<(), String> {
     let mut path = get_lists_dir(&app)?;
     path.push(format!("{}.json", id));
@@ -315,186 +349,226 @@ fn delete_folder_list(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-async fn verify_folder_contents(
-    app: AppHandle,
-    id: String,
-    state: State<'_, AppState>,
+// Helper to verify a single directory against the saved checksums snapshot
+fn verify_single_path(
+    target_path_str: &str,
+    saved_checksums: &HashMap<String, String>,
+    cancel: &Arc<AtomicBool>,
+    app_handle: &AppHandle,
+    location_label: &str,
 ) -> Result<TreeNode, String> {
-    let mut path = get_lists_dir(&app)?;
-    path.push(format!("{}.json", id));
-    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let saved_list: FolderList = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    let target_path = PathBuf::from(target_path_str);
+    let mut total_files_on_disk = 0;
 
-    let target_path = PathBuf::from(&saved_list.path);
-
-    state.cancel_flag.store(false, Ordering::Relaxed);
-    let cancel = state.cancel_flag.clone();
-    let app_handle = app.clone();
-
-    tokio::task::spawn_blocking(move || -> Result<TreeNode, String> {
-        let mut total_files_on_disk = 0;
-        if target_path.exists() {
-            for entry in WalkDir::new(&target_path)
-                .into_iter()
-                .filter_map(|e| e.ok())
-            {
-                if entry.file_type().is_file() {
-                    total_files_on_disk += 1;
-                }
+    if target_path.exists() {
+        for entry in WalkDir::new(&target_path)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if entry.file_type().is_file() {
+                total_files_on_disk += 1;
             }
         }
+    }
 
-        let mut disk_checksums = HashMap::new();
-        let mut processed = 0;
+    let mut disk_checksums = HashMap::new();
+    let mut processed = 0;
 
-        if target_path.exists() {
-            for entry in WalkDir::new(&target_path)
-                .into_iter()
-                .filter_map(|e| e.ok())
-            {
-                if cancel.load(Ordering::Relaxed) {
-                    return Err("Cancelled".into());
-                }
+    if target_path.exists() {
+        for entry in WalkDir::new(&target_path)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if cancel.load(Ordering::Relaxed) {
+                return Err("Cancelled".into());
+            }
 
-                if entry.file_type().is_file() {
-                    let file_path = entry.path();
-                    let relative_path = file_path
-                        .strip_prefix(&target_path)
-                        .unwrap()
-                        .to_string_lossy()
-                        .to_string()
-                        .replace("\\", "/");
+            if entry.file_type().is_file() {
+                let file_path = entry.path();
+                let relative_path = file_path
+                    .strip_prefix(&target_path)
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
+                    .replace("\\", "/");
 
-                    match hash_file(file_path, &cancel) {
-                        Ok(Some(hash)) => {
-                            disk_checksums.insert(relative_path.clone(), hash);
-                        }
-                        Ok(None) => return Err("Cancelled".into()),
-                        Err(_) => {} // skip or handle unreadable
+                match hash_file(file_path, cancel) {
+                    Ok(Some(hash)) => {
+                        disk_checksums.insert(relative_path.clone(), hash);
                     }
+                    Ok(None) => return Err("Cancelled".into()),
+                    Err(_) => {} // skip or handle unreadable
+                }
 
-                    processed += 1;
-                    if processed % 10 == 0 || processed == total_files_on_disk {
-                        let _ = app_handle.emit(
-                            "operation_progress",
-                            Progress {
-                                total: total_files_on_disk,
-                                processed,
-                                current_file: relative_path,
-                            },
-                        );
-                    }
+                processed += 1;
+                if processed % 10 == 0 || processed == total_files_on_disk {
+                    let _ = app_handle.emit(
+                        "operation_progress",
+                        Progress {
+                            total: total_files_on_disk,
+                            processed,
+                            current_file: relative_path,
+                            current_location: location_label.to_string(),
+                        },
+                    );
                 }
             }
         }
+    }
 
-        let mut all_files = std::collections::HashSet::new();
-        for k in saved_list.checksums.keys() {
-            all_files.insert(k.clone());
-        }
-        for k in disk_checksums.keys() {
-            all_files.insert(k.clone());
-        }
+    let mut all_files = std::collections::HashSet::new();
+    for k in saved_checksums.keys() {
+        all_files.insert(k.clone());
+    }
+    for k in disk_checksums.keys() {
+        all_files.insert(k.clone());
+    }
 
-        #[derive(Default)]
-        struct NodeBuilder {
-            files: HashMap<String, String>,
-            dirs: HashMap<String, NodeBuilder>,
-        }
+    #[derive(Default)]
+    struct NodeBuilder {
+        files: HashMap<String, String>,
+        dirs: HashMap<String, NodeBuilder>,
+    }
 
-        let mut root_builder = NodeBuilder::default();
+    let mut root_builder = NodeBuilder::default();
 
-        for file_path in all_files {
-            let saved_hash = saved_list.checksums.get(&file_path);
-            let disk_hash = disk_checksums.get(&file_path);
+    for file_path in all_files {
+        let saved_hash = saved_checksums.get(&file_path);
+        let disk_hash = disk_checksums.get(&file_path);
 
-            let status = match (saved_hash, disk_hash) {
-                (Some(s), Some(d)) if s == d => "Match",
-                (Some(_), Some(_)) => "Mismatch",
-                (Some(_), None) => "Missing",
-                (None, Some(_)) => "Untracked",
-                _ => unreachable!(),
-            };
+        let status = match (saved_hash, disk_hash) {
+            (Some(s), Some(d)) if s == d => "Match",
+            (Some(_), Some(_)) => "Mismatch",
+            (Some(_), None) => "Missing",
+            (None, Some(_)) => "Untracked",
+            _ => unreachable!(),
+        };
 
-            let parts: Vec<&str> = file_path.split('/').collect();
-            let mut current = &mut root_builder;
-            for (i, part) in parts.iter().enumerate() {
-                if i == parts.len() - 1 {
-                    current.files.insert(part.to_string(), status.to_string());
-                } else {
-                    current = current.dirs.entry(part.to_string()).or_default();
-                }
+        let parts: Vec<&str> = file_path.split('/').collect();
+        let mut current = &mut root_builder;
+        for (i, part) in parts.iter().enumerate() {
+            if i == parts.len() - 1 {
+                current.files.insert(part.to_string(), status.to_string());
+            } else {
+                current = current.dirs.entry(part.to_string()).or_default();
             }
         }
+    }
 
-        fn build_tree(name: String, builder: NodeBuilder) -> TreeNode {
-            let mut children = Vec::new();
-            let mut has_mismatch = false;
-            let mut has_missing = false;
-            let mut has_untracked = false;
+    fn build_tree(name: String, builder: NodeBuilder) -> TreeNode {
+        let mut children = Vec::new();
+        let mut has_mismatch = false;
+        let mut has_missing = false;
+        let mut has_untracked = false;
 
-            for (dir_name, dir_builder) in builder.dirs {
-                let node = build_tree(dir_name, dir_builder);
-                if let TreeNode::Directory { ref status, .. } = node {
-                    match status.as_str() {
-                        "Mismatch" => has_mismatch = true,
-                        "Missing" => has_missing = true,
-                        "Untracked" => has_untracked = true,
-                        _ => {}
-                    }
-                }
-                children.push(node);
-            }
-
-            for (file_name, status) in builder.files {
+        for (dir_name, dir_builder) in builder.dirs {
+            let node = build_tree(dir_name, dir_builder);
+            if let TreeNode::Directory { ref status, .. } = node {
                 match status.as_str() {
                     "Mismatch" => has_mismatch = true,
                     "Missing" => has_missing = true,
                     "Untracked" => has_untracked = true,
                     _ => {}
                 }
-                children.push(TreeNode::File {
-                    name: file_name,
-                    status,
-                });
             }
-
-            children.sort_by(|a, b| {
-                let (a_is_dir, a_name) = match a {
-                    TreeNode::Directory { name, .. } => (true, name),
-                    TreeNode::File { name, .. } => (false, name),
-                };
-                let (b_is_dir, b_name) = match b {
-                    TreeNode::Directory { name, .. } => (true, name),
-                    TreeNode::File { name, .. } => (false, name),
-                };
-                if a_is_dir == b_is_dir {
-                    a_name.cmp(b_name)
-                } else {
-                    b_is_dir.cmp(&a_is_dir)
-                }
-            });
-
-            let status = if has_mismatch {
-                "Mismatch"
-            } else if has_missing {
-                "Missing"
-            } else if has_untracked {
-                "Untracked"
-            } else {
-                "Match"
-            };
-
-            TreeNode::Directory {
-                name,
-                status: status.to_string(),
-                children,
-            }
+            children.push(node);
         }
 
-        let root_node = build_tree("Root".to_string(), root_builder);
-        Ok(root_node)
+        for (file_name, status) in builder.files {
+            match status.as_str() {
+                "Mismatch" => has_mismatch = true,
+                "Missing" => has_missing = true,
+                "Untracked" => has_untracked = true,
+                _ => {}
+            }
+            children.push(TreeNode::File {
+                name: file_name,
+                status,
+            });
+        }
+
+        children.sort_by(|a, b| {
+            let (a_is_dir, a_name) = match a {
+                TreeNode::Directory { name, .. } => (true, name),
+                TreeNode::File { name, .. } => (false, name),
+            };
+            let (b_is_dir, b_name) = match b {
+                TreeNode::Directory { name, .. } => (true, name),
+                TreeNode::File { name, .. } => (false, name),
+            };
+            if a_is_dir == b_is_dir {
+                a_name.cmp(b_name)
+            } else {
+                b_is_dir.cmp(&a_is_dir)
+            }
+        });
+
+        let status = if has_mismatch {
+            "Mismatch"
+        } else if has_missing {
+            "Missing"
+        } else if has_untracked {
+            "Untracked"
+        } else {
+            "Match"
+        };
+
+        TreeNode::Directory {
+            name,
+            status: status.to_string(),
+            children,
+        }
+    }
+
+    Ok(build_tree("Root".to_string(), root_builder))
+}
+
+#[tauri::command]
+async fn verify_folder_contents(
+    app: AppHandle,
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<FullVerifyResult, String> {
+    let mut path = get_lists_dir(&app)?;
+    path.push(format!("{}.json", id));
+    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let saved_list: FolderList = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    state.cancel_flag.store(false, Ordering::Relaxed);
+    let cancel = state.cancel_flag.clone();
+    let app_handle = app.clone();
+
+    tokio::task::spawn_blocking(move || -> Result<FullVerifyResult, String> {
+        // Verify main directory
+        let main_tree = verify_single_path(
+            &saved_list.path,
+            &saved_list.checksums,
+            &cancel,
+            &app_handle,
+            "Main Folder",
+        )?;
+
+        // Verify backups
+        let mut backups_results = Vec::new();
+        for (idx, backup_path) in saved_list.backups.iter().enumerate() {
+            let label = format!("Backup {}", idx + 1);
+            let tree = verify_single_path(
+                backup_path,
+                &saved_list.checksums,
+                &cancel,
+                &app_handle,
+                &label,
+            )?;
+            backups_results.push(BackupVerifyResult {
+                path: backup_path.clone(),
+                tree,
+            });
+        }
+
+        Ok(FullVerifyResult {
+            main: main_tree,
+            backups: backups_results,
+        })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -512,6 +586,7 @@ pub fn run() {
             select_folder,
             generate_checksums,
             rehash_folder,
+            update_backups,
             delete_folder_list,
             verify_folder_contents,
             cancel_operation
