@@ -5,7 +5,13 @@
   import TreeItem from "./TreeItem.svelte";
   import type { FolderListSummary, Progress, TreeNode } from "$lib/types";
 
-  // State
+  // Operation Control State
+  type OperationType = "none" | "generating" | "verifying" | "rehashing";
+  let currentOperation: OperationType = $state("none");
+  let isBusy = $derived(currentOperation !== "none");
+  let operationProgress: Progress | null = $state(null);
+
+  // General State
   let folderLists: FolderListSummary[] = $state([]);
   let searchQuery: string = $state("");
   let isLoadingFolders = $state(true);
@@ -14,8 +20,6 @@
   let showCreateDialog = $state(false);
   let selectedPath = $state("");
   let newFolderName = $state("");
-  let isGenerating = $state(false);
-  let generateProgress: Progress | null = $state(null);
 
   // Duplicate Warning Dialog State
   let showDuplicateWarningDialog = $state(false);
@@ -25,9 +29,7 @@
   let showDeleteDialog = $state(false);
   let folderToDelete: FolderListSummary | null = $state(null);
 
-  // Verification State
-  let isVerifying = $state(false);
-  let verifyProgress: Progress | null = $state(null);
+  // Verification & Rehash State
   let verifyResult: TreeNode | null = $state(null);
   let activeVerifyId: string | null = $state(null);
 
@@ -44,23 +46,9 @@
     await fetchFolderLists();
     isLoadingFolders = false;
 
-    // Listeners for progress bars
-    listen<Progress>("generate_progress", (event) => {
-      generateProgress = event.payload;
-    });
-
-    listen("generate_done", () => {
-      isGenerating = false;
-      showCreateDialog = false;
-      fetchFolderLists();
-    });
-
-    listen<Progress>("verify_progress", (event) => {
-      verifyProgress = event.payload;
-    });
-
-    listen("verify_done", () => {
-      isVerifying = false;
+    // A single unified listener for all progress bars
+    listen<Progress>("operation_progress", (event) => {
+      operationProgress = event.payload;
     });
   });
 
@@ -69,10 +57,10 @@
   }
 
   async function openFolderPicker() {
+    if (isBusy) return;
     const path = await invoke<string | null>("select_folder");
     if (path) {
       const isDuplicate = folderLists.some((list) => list.path === path);
-
       if (isDuplicate) {
         pendingFolderPath = path;
         showDuplicateWarningDialog = true;
@@ -100,22 +88,64 @@
     pendingFolderPath = "";
   }
 
+  async function cancelOperation() {
+    await invoke("cancel_operation");
+  }
+
   async function startGeneration() {
-    if (!selectedPath || !newFolderName) return;
-    isGenerating = true;
-    generateProgress = { total: 0, processed: 0, current_file: "Starting..." };
+    if (!selectedPath || !newFolderName || isBusy) return;
+    currentOperation = "generating";
+    operationProgress = { total: 0, processed: 0, current_file: "Starting..." };
+
     try {
       await invoke("generate_checksums", {
         name: newFolderName,
         targetPath: selectedPath,
       });
+      showCreateDialog = false;
+      await fetchFolderLists();
     } catch (e) {
-      alert("Error: " + e);
-      isGenerating = false;
+      if (e !== "Cancelled") alert("Error: " + e);
+    } finally {
+      currentOperation = "none";
+    }
+  }
+
+  async function rehashList(id: string) {
+    if (isBusy) return;
+    activeVerifyId = id;
+    verifyResult = null;
+    currentOperation = "rehashing";
+    operationProgress = { total: 0, processed: 0, current_file: "Starting..." };
+
+    try {
+      await invoke("rehash_folder", { id });
+      await fetchFolderLists();
+    } catch (e) {
+      if (e !== "Cancelled") alert("Error: " + e);
+    } finally {
+      currentOperation = "none";
+    }
+  }
+
+  async function verifyList(id: string) {
+    if (isBusy) return;
+    activeVerifyId = id;
+    verifyResult = null;
+    currentOperation = "verifying";
+    operationProgress = { total: 0, processed: 0, current_file: "Starting..." };
+
+    try {
+      verifyResult = await invoke<TreeNode>("verify_folder_contents", { id });
+    } catch (e) {
+      if (e !== "Cancelled") alert("Error: " + e);
+    } finally {
+      currentOperation = "none";
     }
   }
 
   function requestDelete(list: FolderListSummary) {
+    if (isBusy) return;
     folderToDelete = list;
     showDeleteDialog = true;
   }
@@ -136,19 +166,6 @@
     showDeleteDialog = false;
     folderToDelete = null;
   }
-
-  async function verifyList(id: string) {
-    activeVerifyId = id;
-    verifyResult = null;
-    isVerifying = true;
-    verifyProgress = { total: 0, processed: 0, current_file: "Starting..." };
-    try {
-      verifyResult = await invoke<TreeNode>("verify_folder_contents", { id });
-    } catch (e) {
-      alert("Error: " + e);
-      isVerifying = false;
-    }
-  }
 </script>
 
 <div
@@ -161,8 +178,9 @@
         Checksum Verifier
       </h1>
       <button
-        class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg shadow font-medium transition cursor-pointer"
+        class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg shadow font-medium transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         onclick={openFolderPicker}
+        disabled={isBusy}
       >
         + Add Folder
       </button>
@@ -172,19 +190,26 @@
     <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 min-h-0">
       <!-- Left Panel: Folder Lists -->
       <div
-        class="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-6 flex flex-col h-full min-h-0"
+        class="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-6 flex flex-col h-full min-h-0 relative"
       >
-        <div class="mb-4 shrink-0">
+        {#if isBusy}
+          <div
+            class="absolute inset-0 bg-white/40 dark:bg-gray-900/40 z-10 rounded-xl"
+          ></div>
+        {/if}
+
+        <div class="mb-4 shrink-0 z-20">
           <input
             type="text"
             placeholder="Search folders..."
             aria-label="Search folders"
             bind:value={searchQuery}
-            class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={isBusy}
+            class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
           />
         </div>
 
-        <div class="flex-1 overflow-y-auto pr-1 min-h-0 relative">
+        <div class="flex-1 overflow-y-auto pr-1 min-h-0 relative z-20">
           {#if isLoadingFolders}
             <div class="absolute inset-0 flex items-center justify-center">
               <svg
@@ -235,9 +260,10 @@
                       </p>
                     </div>
                     <button
-                      class="text-red-500 hover:text-red-700 dark:hover:text-red-400 p-1 cursor-pointer transition shrink-0"
+                      class="text-red-500 hover:text-red-700 dark:hover:text-red-400 p-1 cursor-pointer transition shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
                       onclick={() => requestDelete(list)}
                       title="Delete"
+                      disabled={isBusy}
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -262,12 +288,23 @@
                         list.created_at * 1000,
                       ).toLocaleDateString()}</span
                     >
-                    <button
-                      class="bg-gray-200 dark:bg-gray-700 hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-700 dark:hover:text-blue-300 text-gray-800 dark:text-gray-200 px-3 py-1 rounded text-sm font-medium transition cursor-pointer shrink-0"
-                      onclick={() => verifyList(list.id)}
-                    >
-                      Verify
-                    </button>
+                    <div class="flex space-x-2">
+                      <button
+                        class="bg-gray-200 dark:bg-gray-700 hover:bg-green-100 dark:hover:bg-green-900 hover:text-green-700 dark:hover:text-green-300 text-gray-800 dark:text-gray-200 px-3 py-1 rounded text-sm font-medium transition cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onclick={() => rehashList(list.id)}
+                        disabled={isBusy}
+                        title="Update Checksums"
+                      >
+                        Update
+                      </button>
+                      <button
+                        class="bg-gray-200 dark:bg-gray-700 hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-700 dark:hover:text-blue-300 text-gray-800 dark:text-gray-200 px-3 py-1 rounded text-sm font-medium transition cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onclick={() => verifyList(list.id)}
+                        disabled={isBusy}
+                      >
+                        Verify
+                      </button>
+                    </div>
                   </div>
                 </div>
               {/each}
@@ -276,7 +313,7 @@
         </div>
       </div>
 
-      <!-- Right Panel: Verification Details -->
+      <!-- Right Panel: Verification / Update Details -->
       <div
         class="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 p-6 flex flex-col h-full min-h-0"
       >
@@ -284,30 +321,43 @@
           <h2
             class="text-xl font-semibold mb-4 shrink-0 text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2"
           >
-            Verification Results
+            {#if currentOperation === "rehashing"}
+              Snapshot Update
+            {:else}
+              Verification Results
+            {/if}
           </h2>
 
-          {#if isVerifying && verifyProgress}
+          {#if (currentOperation === "verifying" || currentOperation === "rehashing") && operationProgress}
             <div
-              class="mb-6 bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg shrink-0"
+              class="mb-6 bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg shrink-0 border border-blue-100 dark:border-blue-800"
             >
-              <p
-                class="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2"
-              >
-                Verifying files...
-              </p>
+              <div class="flex justify-between items-center mb-2">
+                <p class="text-sm font-medium text-blue-800 dark:text-blue-300">
+                  {currentOperation === "rehashing"
+                    ? "Updating checksums..."
+                    : "Verifying files..."}
+                </p>
+                <button
+                  class="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800 px-3 py-1 rounded text-xs font-medium transition cursor-pointer"
+                  onclick={cancelOperation}
+                >
+                  Stop
+                </button>
+              </div>
               <div
                 class="w-full bg-blue-200 dark:bg-blue-900/50 rounded-full h-2.5 mb-2"
               >
                 <div
                   class="bg-blue-600 dark:bg-blue-500 h-2.5 rounded-full transition-all duration-300"
-                  style="width: {verifyProgress.total
-                    ? (verifyProgress.processed / verifyProgress.total) * 100
+                  style="width: {operationProgress.total
+                    ? (operationProgress.processed / operationProgress.total) *
+                      100
                     : 0}%"
                 ></div>
               </div>
               <p class="text-xs text-blue-600 dark:text-blue-400 truncate">
-                {verifyProgress.processed} / {verifyProgress.total} - {verifyProgress.current_file}
+                {operationProgress.processed} / {operationProgress.total} - {operationProgress.current_file}
               </p>
             </div>
           {:else if verifyResult}
@@ -320,14 +370,14 @@
             <div
               class="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500"
             >
-              <p>Waiting for verification results...</p>
+              <p>Ready. Select Verify or Update on a folder list.</p>
             </div>
           {/if}
         {:else}
           <div
             class="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500"
           >
-            <p>Select Verify on a folder list to see results.</p>
+            <p>Select Verify or Update on a folder list to see results.</p>
           </div>
         {/if}
       </div>
@@ -429,28 +479,38 @@
           id="folder-name-input"
           type="text"
           bind:value={newFolderName}
-          disabled={isGenerating}
+          disabled={currentOperation === "generating"}
           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:opacity-50"
         />
       </div>
 
-      {#if isGenerating && generateProgress}
-        <div class="mb-6">
-          <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Generating checksums...
-          </p>
+      {#if currentOperation === "generating" && operationProgress}
+        <div
+          class="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600"
+        >
+          <div class="flex justify-between items-center mb-2">
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Generating checksums...
+            </p>
+            <button
+              class="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800 px-3 py-1 rounded text-xs font-medium transition cursor-pointer"
+              onclick={cancelOperation}
+            >
+              Stop
+            </button>
+          </div>
           <div
-            class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-2"
+            class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 mb-2"
           >
             <div
               class="bg-blue-600 dark:bg-blue-500 h-2.5 rounded-full transition-all duration-300"
-              style="width: {generateProgress.total
-                ? (generateProgress.processed / generateProgress.total) * 100
+              style="width: {operationProgress.total
+                ? (operationProgress.processed / operationProgress.total) * 100
                 : 0}%"
             ></div>
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400 truncate">
-            {generateProgress.processed} / {generateProgress.total} - {generateProgress.current_file}
+            {operationProgress.processed} / {operationProgress.total} - {operationProgress.current_file}
           </p>
         </div>
       {/if}
@@ -459,16 +519,18 @@
         <button
           class="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition font-medium disabled:opacity-50 cursor-pointer"
           onclick={() => (showCreateDialog = false)}
-          disabled={isGenerating}
+          disabled={currentOperation === "generating"}
         >
           Cancel
         </button>
         <button
           class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition font-medium disabled:opacity-50 cursor-pointer"
           onclick={startGeneration}
-          disabled={isGenerating || !newFolderName}
+          disabled={currentOperation === "generating" || !newFolderName}
         >
-          {isGenerating ? "Generating..." : "Save & Generate"}
+          {currentOperation === "generating"
+            ? "Generating..."
+            : "Save & Generate"}
         </button>
       </div>
     </div>
@@ -517,7 +579,6 @@
     color-scheme: light dark;
   }
 
-  /* Custom modern WebKit scrollbars for Windows Chromium engine */
   :global(::-webkit-scrollbar) {
     width: 8px;
     height: 8px;
@@ -536,7 +597,6 @@
     background-color: #94a3b8;
   }
 
-  /* Dark mode scrollbar rules */
   @media (prefers-color-scheme: dark) {
     :global(::-webkit-scrollbar-thumb) {
       background-color: #475569;
