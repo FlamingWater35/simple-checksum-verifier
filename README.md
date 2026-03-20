@@ -1,5 +1,12 @@
 # Simple Checksum Verifier
 
+[![Tauri](https://img.shields.io/badge/Tauri-24C8D8?logo=tauri&logoColor=fff)](https://tauri.app/)
+[![Svelte](https://img.shields.io/badge/Svelte-%23f1413d.svg?logo=svelte&logoColor=white)](https://svelte.dev/)
+[![Latest release](https://img.shields.io/github/v/release/FlamingWater35/simple-checksum-verifier)](https://github.com/FlamingWater35/simple-checksum-verifier/releases)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/FlamingWater35/simple-checksum-verifier/create-draft-release.yml?label=build)](https://github.com/FlamingWater35/simple-checksum-verifier/actions/workflows/create-draft-release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-purple)
+
 An application for hashing files inside selected folders and verifying their checksums easily and conveniently. It creates "snapshots" of your folders and compares them against the live state to detect changes, deletions, or corruption.
 
 ## ✨ Features
@@ -71,3 +78,8 @@ The application stores your folder list metadata and checksums as JSON files in:
 
 - **Windows:** `%LOCALAPPDATA%\com.flamingwater.simple-checksum-verifier\folder_lists\`
 - **Linux:** `~/.local/share/com.flamingwater.simple-checksum-verifier/folder_lists/`
+
+## 📜 License
+
+Released under the **MIT License**.
+See the [LICENSE](LICENSE) file for full details.
