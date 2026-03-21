@@ -5,6 +5,7 @@ export type FolderListSummary = {
   created_at: number;
   total_files: number;
   backups: string[];
+  available_algorithms: string[];
 };
 
 export type Progress = {
@@ -29,4 +30,9 @@ export type BackupVerifyResult = {
 export type FullVerifyResult = {
   main: TreeNode;
   backups: BackupVerifyResult[];
+};
+
+export type AppSettings = {
+  theme: "auto" | "light" | "dark";
+  algorithm: "sha256" | "blake2b";
 };

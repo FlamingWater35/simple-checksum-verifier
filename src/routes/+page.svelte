@@ -1,12 +1,13 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import TreeItem from "./TreeItem.svelte";
   import type {
     FolderListSummary,
     Progress,
     FullVerifyResult,
+    AppSettings,
   } from "$lib/types";
 
   // Operation Control State
@@ -14,6 +15,11 @@
   let currentOperation: OperationType = $state("none");
   let isBusy = $derived(currentOperation !== "none");
   let operationProgress: Progress | null = $state(null);
+
+  // Settings State
+  let settings: AppSettings = $state({ theme: "auto", algorithm: "sha256" });
+  let showSettingsDialog = $state(false);
+  let themeQueryMedia: MediaQueryList | null = null;
 
   // General State
   let folderLists: FolderListSummary[] = $state([]);
@@ -47,9 +53,8 @@
   // Verification & Rehash State
   let verifyResult: FullVerifyResult | null = $state(null);
   let activeVerifyId: string | null = $state(null);
-  let selectedVerifyTab: number = $state(0); // 0 = main, 1+ = backups
+  let selectedVerifyTab: number = $state(0);
 
-  // Computed Values
   let filteredLists = $derived(
     folderLists.filter(
       (list) =>
@@ -59,6 +64,12 @@
   );
 
   onMount(async () => {
+    settings = await invoke("get_settings");
+    applyTheme();
+
+    themeQueryMedia = window.matchMedia("(prefers-color-scheme: dark)");
+    themeQueryMedia.addEventListener("change", applyTheme);
+
     await fetchFolderLists();
     isLoadingFolders = false;
 
@@ -68,6 +79,31 @@
       operationProgress = event.payload;
     });
   });
+
+  onDestroy(() => {
+    if (themeQueryMedia) {
+      themeQueryMedia.removeEventListener("change", applyTheme);
+    }
+  });
+
+  function applyTheme() {
+    if (!window) return;
+    const isDark =
+      settings.theme === "dark" ||
+      (settings.theme === "auto" &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+    if (isDark) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }
+
+  async function updateSettings() {
+    applyTheme();
+    await invoke("save_settings", { settings });
+  }
 
   async function checkForUpdates() {
     try {
@@ -164,6 +200,7 @@
       await invoke("generate_checksums", {
         name: newFolderName,
         targetPath: selectedPath,
+        algorithm: settings.algorithm,
       });
       showCreateDialog = false;
       await fetchFolderLists();
@@ -230,7 +267,7 @@
     };
 
     try {
-      await invoke("rehash_folder", { id });
+      await invoke("rehash_folder", { id, algorithm: settings.algorithm });
       await fetchFolderLists();
     } catch (e) {
       if (e !== "Cancelled") alert("Error: " + e);
@@ -255,6 +292,7 @@
     try {
       verifyResult = await invoke<FullVerifyResult>("verify_folder_contents", {
         id,
+        algorithm: settings.algorithm,
       });
     } catch (e) {
       if (e !== "Cancelled") alert("Error: " + e);
@@ -296,6 +334,7 @@
       else if (showDeleteDialog) closeDeleteDialog();
       else if (showManageBackupsDialog) showManageBackupsDialog = false;
       else if (showUpdateDialog) showUpdateDialog = false;
+      else if (showSettingsDialog) showSettingsDialog = false;
     }
   }}
 />
@@ -309,10 +348,10 @@
       <h1 class="text-3xl font-bold text-gray-900 dark:text-white">
         Checksum Verifier
       </h1>
-      <div class="flex items-center">
+      <div class="flex items-center space-x-4">
         {#if updateAvailable}
           <button
-            class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 mr-4 p-2 rounded-full hover:bg-blue-100 dark:hover:bg-gray-800 transition-colors cursor-pointer relative"
+            class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 p-2 rounded-full hover:bg-blue-100 dark:hover:bg-gray-800 transition-colors cursor-pointer relative"
             onclick={() => (showUpdateDialog = true)}
             title="Update Available"
           >
@@ -339,6 +378,34 @@
             </span>
           </button>
         {/if}
+
+        <button
+          class="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+          onclick={() => (showSettingsDialog = true)}
+          disabled={isBusy}
+          title="Settings"
+        >
+          <svg
+            class="w-6 h-6"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+            ></path>
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+            ></path>
+          </svg>
+        </button>
+
         <button
           class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg shadow font-medium transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           onclick={openFolderPicker}
@@ -422,6 +489,27 @@
                       >
                         {list.path}
                       </p>
+                      <!-- Missing Algorithm Warning -->
+                      {#if !list.available_algorithms.includes(settings.algorithm) && list.total_files > 0}
+                        <div
+                          class="text-orange-600 dark:text-orange-400 text-xs mt-1.5 flex items-center font-medium"
+                        >
+                          <svg
+                            class="w-3.5 h-3.5 mr-1"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                            ></path>
+                          </svg>
+                          Requires Update ({settings.algorithm.toUpperCase()})
+                        </div>
+                      {/if}
                     </div>
                     <button
                       class="text-red-500 hover:text-red-700 dark:hover:text-red-400 p-1 cursor-pointer transition shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
@@ -611,6 +699,97 @@
     </div>
   </div>
 </div>
+
+<!-- Settings Dialog -->
+{#if showSettingsDialog}
+  <div
+    class="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center p-4 z-50"
+  >
+    <div
+      class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-6"
+    >
+      <h2
+        class="text-xl font-bold mb-4 text-gray-900 dark:text-white flex items-center"
+      >
+        <svg
+          class="w-6 h-6 mr-2 text-gray-500"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+          ></path>
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+          ></path>
+        </svg>
+        App Settings
+      </h2>
+
+      <div class="space-y-6 mb-6">
+        <!-- Theme Selection -->
+        <div>
+          <label
+            for="theme-select"
+            class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+            >Theme</label
+          >
+          <select
+            id="theme-select"
+            bind:value={settings.theme}
+            onchange={updateSettings}
+            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          >
+            <option value="auto">Automatic (System)</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+
+        <!-- Algorithm Selection -->
+        <div>
+          <label
+            for="algo-select"
+            class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+            >Hashing Algorithm</label
+          >
+          <select
+            id="algo-select"
+            bind:value={settings.algorithm}
+            onchange={updateSettings}
+            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          >
+            <option value="sha256">SHA-256 (Default)</option>
+            <option value="blake2b">BLAKE2b (Faster on 64-bit CPUs)</option>
+          </select>
+          <p
+            class="mt-2 text-xs text-gray-500 dark:text-gray-400 leading-relaxed"
+          >
+            Note: Changing the algorithm applies to future operations. Folders
+            without hashes for the newly selected algorithm will display a
+            warning badge until you click Update.
+          </p>
+        </div>
+      </div>
+
+      <div class="flex justify-end">
+        <button
+          class="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 transition font-medium cursor-pointer"
+          onclick={() => (showSettingsDialog = false)}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Update Available Dialog -->
 {#if showUpdateDialog}
@@ -966,44 +1145,3 @@
     </div>
   </div>
 {/if}
-
-<style>
-  :global(html) {
-    color-scheme: light dark;
-  }
-
-  .hide-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-  .hide-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-
-  :global(::-webkit-scrollbar) {
-    width: 8px;
-    height: 8px;
-  }
-
-  :global(::-webkit-scrollbar-track) {
-    background: transparent;
-  }
-
-  :global(::-webkit-scrollbar-thumb) {
-    background-color: #cbd5e1;
-    border-radius: 4px;
-  }
-
-  :global(::-webkit-scrollbar-thumb:hover) {
-    background-color: #94a3b8;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :global(::-webkit-scrollbar-thumb) {
-      background-color: #475569;
-    }
-    :global(::-webkit-scrollbar-thumb:hover) {
-      background-color: #64748b;
-    }
-  }
-</style>

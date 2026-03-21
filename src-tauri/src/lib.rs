@@ -1,3 +1,4 @@
+use blake2::Blake2b512;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -15,15 +16,58 @@ struct AppState {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+struct AppSettings {
+    theme: String,
+    algorithm: String,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            theme: "auto".to_string(),
+            algorithm: "sha256".to_string(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 struct FolderList {
     id: String,
     name: String,
     path: String,
     created_at: u64,
     total_files: usize,
+    #[serde(default)]
     checksums: HashMap<String, String>,
     #[serde(default)]
+    hashes: HashMap<String, HashMap<String, String>>,
+    #[serde(default)]
     backups: Vec<String>,
+}
+
+impl FolderList {
+    fn migrate(&mut self) {
+        if !self.checksums.is_empty() && self.hashes.is_empty() {
+            for (path, hash) in &self.checksums {
+                let mut algo_map = HashMap::new();
+                algo_map.insert("sha256".to_string(), hash.clone());
+                self.hashes.insert(path.clone(), algo_map);
+            }
+            self.checksums.clear();
+        }
+    }
+
+    fn get_available_algorithms(&self) -> Vec<String> {
+        let mut algos = std::collections::HashSet::new();
+        if let Some(first_file) = self.hashes.values().next() {
+            for k in first_file.keys() {
+                algos.insert(k.clone());
+            }
+        } else if !self.checksums.is_empty() {
+            algos.insert("sha256".to_string());
+        }
+        algos.into_iter().collect()
+    }
 }
 
 #[derive(Serialize)]
@@ -34,6 +78,7 @@ struct FolderListSummary {
     created_at: u64,
     total_files: usize,
     backups: Vec<String>,
+    available_algorithms: Vec<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -70,30 +115,76 @@ struct FullVerifyResult {
     backups: Vec<BackupVerifyResult>,
 }
 
-// Stores the config lists in %LOCALAPPDATA%
+fn get_app_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let path = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
 fn get_lists_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let mut path = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let mut path = get_app_dir(app)?;
     path.push("folder_lists");
     fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     Ok(path)
 }
 
-fn hash_file(path: &Path, cancel_flag: &Arc<AtomicBool>) -> std::io::Result<Option<String>> {
+#[tauri::command]
+fn get_settings(app: AppHandle) -> Result<AppSettings, String> {
+    let mut path = get_app_dir(&app)?;
+    path.push("settings.json");
+    if path.exists() {
+        let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+        Ok(serde_json::from_str(&content).unwrap_or_default())
+    } else {
+        Ok(AppSettings::default())
+    }
+}
+
+#[tauri::command]
+fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
+    let mut path = get_app_dir(&app)?;
+    path.push("settings.json");
+    let json = serde_json::to_string(&settings).map_err(|e| e.to_string())?;
+    fs::write(path, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn hash_file(
+    path: &Path,
+    cancel_flag: &Arc<AtomicBool>,
+    algorithm: &str,
+) -> std::io::Result<Option<String>> {
     let file = fs::File::open(path)?;
     let mut reader = BufReader::new(file);
-    let mut hasher = Sha256::new();
     let mut buffer = [0; 65536];
-    loop {
-        if cancel_flag.load(Ordering::Relaxed) {
-            return Ok(None);
+
+    if algorithm == "blake2b" {
+        let mut hasher = Blake2b512::new();
+        loop {
+            if cancel_flag.load(Ordering::Relaxed) {
+                return Ok(None);
+            }
+            let count = reader.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            hasher.update(&buffer[..count]);
         }
-        let count = reader.read(&mut buffer)?;
-        if count == 0 {
-            break;
+        Ok(Some(format!("{:x}", hasher.finalize())))
+    } else {
+        let mut hasher = Sha256::new();
+        loop {
+            if cancel_flag.load(Ordering::Relaxed) {
+                return Ok(None);
+            }
+            let count = reader.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            hasher.update(&buffer[..count]);
         }
-        hasher.update(&buffer[..count]);
+        Ok(Some(format!("{:x}", hasher.finalize())))
     }
-    Ok(Some(format!("{:x}", hasher.finalize())))
 }
 
 #[tauri::command]
@@ -122,7 +213,11 @@ fn get_folder_lists(app: AppHandle) -> Result<Vec<FolderListSummary>, String> {
                 .unwrap_or(false)
             {
                 if let Ok(content) = fs::read_to_string(entry.path()) {
-                    if let Ok(list) = serde_json::from_str::<FolderList>(&content) {
+                    if let Ok(mut list) = serde_json::from_str::<FolderList>(&content) {
+                        list.migrate();
+
+                        let available_algorithms = list.get_available_algorithms();
+
                         summaries.push(FolderListSummary {
                             id: list.id,
                             name: list.name,
@@ -130,6 +225,7 @@ fn get_folder_lists(app: AppHandle) -> Result<Vec<FolderListSummary>, String> {
                             created_at: list.created_at,
                             total_files: list.total_files,
                             backups: list.backups,
+                            available_algorithms,
                         });
                     }
                 }
@@ -157,6 +253,7 @@ fn compute_folder_checksums(
     cancel: &Arc<AtomicBool>,
     app_handle: &AppHandle,
     location_label: &str,
+    algorithm: &str,
 ) -> Result<(HashMap<String, String>, usize), String> {
     let mut total_files = 0;
     for entry in WalkDir::new(target_path).into_iter().filter_map(|e| e.ok()) {
@@ -183,18 +280,17 @@ fn compute_folder_checksums(
                 .to_string()
                 .replace("\\", "/");
 
-            match hash_file(file_path, cancel) {
+            match hash_file(file_path, cancel, algorithm) {
                 Ok(Some(hash)) => {
                     checksums.insert(relative_path.clone(), hash);
                 }
                 Ok(None) => return Err("Cancelled".into()),
-                Err(_) => {} // skip unreadable
+                Err(_) => {}
             }
 
             processed += 1;
             let now = Instant::now();
 
-            // Throttle IPC events
             if processed == total_files || now.duration_since(last_emit).as_millis() >= 50 {
                 let _ = app_handle.emit(
                     "operation_progress",
@@ -217,6 +313,7 @@ async fn generate_checksums(
     app: AppHandle,
     name: String,
     target_path: String,
+    algorithm: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let path = PathBuf::from(&target_path);
@@ -229,8 +326,15 @@ async fn generate_checksums(
     let app_handle = app.clone();
 
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let (checksums, total_files) =
-            compute_folder_checksums(&path, &cancel, &app_handle, "Main Folder")?;
+        let (new_hashes, total_files) =
+            compute_folder_checksums(&path, &cancel, &app_handle, "Main Folder", &algorithm)?;
+
+        let mut structured_hashes = HashMap::new();
+        for (p, h) in new_hashes {
+            let mut map = HashMap::new();
+            map.insert(algorithm.clone(), h);
+            structured_hashes.insert(p, map);
+        }
 
         let id = uuid::Uuid::new_v4().to_string();
         let list = FolderList {
@@ -242,7 +346,8 @@ async fn generate_checksums(
                 .unwrap()
                 .as_secs(),
             total_files,
-            checksums,
+            checksums: HashMap::new(),
+            hashes: structured_hashes,
             backups: Vec::new(),
         };
 
@@ -261,12 +366,14 @@ async fn generate_checksums(
 async fn rehash_folder(
     app: AppHandle,
     id: String,
+    algorithm: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let mut path = get_lists_dir(&app)?;
     path.push(format!("{}.json", id));
     let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let saved_list: FolderList = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    let mut saved_list: FolderList = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    saved_list.migrate();
 
     let target_path_buf = PathBuf::from(&saved_list.path);
     if !target_path_buf.is_dir() {
@@ -278,8 +385,20 @@ async fn rehash_folder(
     let app_handle = app.clone();
 
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let (checksums, total_files) =
-            compute_folder_checksums(&target_path_buf, &cancel, &app_handle, "Main Folder")?;
+        let (new_hashes, total_files) = compute_folder_checksums(
+            &target_path_buf,
+            &cancel,
+            &app_handle,
+            "Main Folder",
+            &algorithm,
+        )?;
+
+        let mut updated_hashes = HashMap::new();
+        for (p, h) in new_hashes {
+            let mut file_hashes = saved_list.hashes.get(&p).cloned().unwrap_or_default();
+            file_hashes.insert(algorithm.clone(), h);
+            updated_hashes.insert(p, file_hashes);
+        }
 
         let list = FolderList {
             id: id.clone(),
@@ -290,7 +409,8 @@ async fn rehash_folder(
                 .unwrap()
                 .as_secs(),
             total_files,
-            checksums,
+            checksums: HashMap::new(),
+            hashes: updated_hashes,
             backups: saved_list.backups.clone(),
         };
 
@@ -331,7 +451,8 @@ fn delete_folder_list(app: AppHandle, id: String) -> Result<(), String> {
 
 fn verify_single_path(
     target_path_str: &str,
-    saved_checksums: &HashMap<String, String>,
+    saved_hashes: &HashMap<String, HashMap<String, String>>,
+    algorithm: &str,
     cancel: &Arc<AtomicBool>,
     app_handle: &AppHandle,
     location_label: &str,
@@ -372,7 +493,7 @@ fn verify_single_path(
                     .to_string()
                     .replace("\\", "/");
 
-                match hash_file(file_path, cancel) {
+                match hash_file(file_path, cancel, algorithm) {
                     Ok(Some(hash)) => {
                         disk_checksums.insert(relative_path.clone(), hash);
                     }
@@ -401,7 +522,7 @@ fn verify_single_path(
     }
 
     let mut all_files = std::collections::HashSet::new();
-    for k in saved_checksums.keys() {
+    for k in saved_hashes.keys() {
         all_files.insert(k.clone());
     }
     for k in disk_checksums.keys() {
@@ -417,7 +538,7 @@ fn verify_single_path(
     let mut root_builder = NodeBuilder::default();
 
     for file_path in all_files {
-        let saved_hash = saved_checksums.get(&file_path);
+        let saved_hash = saved_hashes.get(&file_path).and_then(|m| m.get(algorithm));
         let disk_hash = disk_checksums.get(&file_path);
 
         let status = match (saved_hash, disk_hash) {
@@ -511,12 +632,14 @@ fn verify_single_path(
 async fn verify_folder_contents(
     app: AppHandle,
     id: String,
+    algorithm: String,
     state: State<'_, AppState>,
 ) -> Result<FullVerifyResult, String> {
     let mut path = get_lists_dir(&app)?;
     path.push(format!("{}.json", id));
     let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let saved_list: FolderList = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    let mut saved_list: FolderList = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    saved_list.migrate();
 
     state.cancel_flag.store(false, Ordering::Relaxed);
     let cancel = state.cancel_flag.clone();
@@ -525,7 +648,8 @@ async fn verify_folder_contents(
     tokio::task::spawn_blocking(move || -> Result<FullVerifyResult, String> {
         let main_tree = verify_single_path(
             &saved_list.path,
-            &saved_list.checksums,
+            &saved_list.hashes,
+            &algorithm,
             &cancel,
             &app_handle,
             "Main Folder",
@@ -536,7 +660,8 @@ async fn verify_folder_contents(
             let label = format!("Backup {}", idx + 1);
             let tree = verify_single_path(
                 backup_path,
-                &saved_list.checksums,
+                &saved_list.hashes,
+                &algorithm,
                 &cancel,
                 &app_handle,
                 &label,
@@ -564,6 +689,8 @@ pub fn run() {
             cancel_flag: Arc::new(AtomicBool::new(false)),
         })
         .invoke_handler(tauri::generate_handler![
+            get_settings,
+            save_settings,
             get_app_version,
             open_url,
             get_folder_lists,
