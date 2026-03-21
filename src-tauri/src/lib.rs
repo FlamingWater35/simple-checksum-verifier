@@ -440,6 +440,20 @@ fn update_backups(app: AppHandle, id: String, backups: Vec<String>) -> Result<()
 }
 
 #[tauri::command]
+fn update_main_path(app: AppHandle, id: String, new_path: String) -> Result<(), String> {
+    let mut path = get_lists_dir(&app)?;
+    path.push(format!("{}.json", id));
+    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut list: FolderList = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    list.path = new_path;
+
+    let json = serde_json::to_string(&list).map_err(|e| e.to_string())?;
+    fs::write(path, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 fn delete_folder_list(app: AppHandle, id: String) -> Result<(), String> {
     let mut path = get_lists_dir(&app)?;
     path.push(format!("{}.json", id));
@@ -698,6 +712,7 @@ pub fn run() {
             generate_checksums,
             rehash_folder,
             update_backups,
+            update_main_path,
             delete_folder_list,
             verify_folder_contents,
             cancel_operation

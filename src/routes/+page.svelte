@@ -42,6 +42,9 @@
   let showDuplicateWarningDialog = $state(false);
   let pendingFolderPath = $state("");
 
+  // Error Dialog State
+  let showErrorMessage: string | null = $state(null);
+
   // Delete Dialog State
   let showDeleteDialog = $state(false);
   let folderToDelete: FolderListSummary | null = $state(null);
@@ -106,6 +109,14 @@
   async function updateSettings() {
     applyTheme();
     await invoke("save_settings", { settings });
+  }
+
+  function showError(msg: string) {
+    showErrorMessage = msg;
+  }
+
+  function closeError() {
+    showErrorMessage = null;
   }
 
   async function checkForUpdates() {
@@ -208,9 +219,31 @@
       showCreateDialog = false;
       await fetchFolderLists();
     } catch (e) {
-      if (e !== "Cancelled") alert("Error: " + e);
+      if (e !== "Cancelled") showError("Error: " + e);
     } finally {
       currentOperation = "none";
+    }
+  }
+
+  async function changeMainPath(list: FolderListSummary) {
+    if (isBusy) return;
+    const newPath = await invoke<string | null>("select_folder");
+    if (newPath) {
+      if (list.backups.includes(newPath)) {
+        showError(
+          "The selected path is already a backup location. Please remove it from backups first.",
+        );
+        return;
+      }
+      try {
+        await invoke("update_main_path", { id: list.id, newPath });
+        await fetchFolderLists();
+        if (activeBackupList?.id === list.id) {
+          activeBackupList = folderLists.find((l) => l.id === list.id) || null;
+        }
+      } catch (e) {
+        showError("Error: " + e);
+      }
     }
   }
 
@@ -228,15 +261,19 @@
         path !== activeBackupList.path
       ) {
         const newBackups = [...activeBackupList.backups, path];
-        await invoke("update_backups", {
-          id: activeBackupList.id,
-          backups: newBackups,
-        });
-        await fetchFolderLists();
-        activeBackupList =
-          folderLists.find((l) => l.id === activeBackupList!.id) || null;
+        try {
+          await invoke("update_backups", {
+            id: activeBackupList.id,
+            backups: newBackups,
+          });
+          await fetchFolderLists();
+          activeBackupList =
+            folderLists.find((l) => l.id === activeBackupList!.id) || null;
+        } catch (e) {
+          showError("Error: " + e);
+        }
       } else {
-        alert(
+        showError(
           "This folder is already set as the main path or a backup location.",
         );
       }
@@ -246,13 +283,17 @@
   async function removeBackupLocation(path: string) {
     if (activeBackupList) {
       const newBackups = activeBackupList.backups.filter((b) => b !== path);
-      await invoke("update_backups", {
-        id: activeBackupList.id,
-        backups: newBackups,
-      });
-      await fetchFolderLists();
-      activeBackupList =
-        folderLists.find((l) => l.id === activeBackupList!.id) || null;
+      try {
+        await invoke("update_backups", {
+          id: activeBackupList.id,
+          backups: newBackups,
+        });
+        await fetchFolderLists();
+        activeBackupList =
+          folderLists.find((l) => l.id === activeBackupList!.id) || null;
+      } catch (e) {
+        showError("Error: " + e);
+      }
     }
   }
 
@@ -273,7 +314,7 @@
       await invoke("rehash_folder", { id, algorithm: settings.algorithm });
       await fetchFolderLists();
     } catch (e) {
-      if (e !== "Cancelled") alert("Error: " + e);
+      if (e !== "Cancelled") showError("Error: " + e);
     } finally {
       currentOperation = "none";
     }
@@ -298,7 +339,7 @@
         algorithm: settings.algorithm,
       });
     } catch (e) {
-      if (e !== "Cancelled") alert("Error: " + e);
+      if (e !== "Cancelled") showError("Error: " + e);
     } finally {
       currentOperation = "none";
     }
@@ -312,11 +353,15 @@
 
   async function confirmDelete() {
     if (folderToDelete) {
-      await invoke("delete_folder_list", { id: folderToDelete.id });
-      await fetchFolderLists();
-      if (activeVerifyId === folderToDelete.id) {
-        verifyResult = null;
-        activeVerifyId = null;
+      try {
+        await invoke("delete_folder_list", { id: folderToDelete.id });
+        await fetchFolderLists();
+        if (activeVerifyId === folderToDelete.id) {
+          verifyResult = null;
+          activeVerifyId = null;
+        }
+      } catch (e) {
+        showError("Error: " + e);
       }
     }
     closeDeleteDialog();
@@ -331,7 +376,8 @@
 <svelte:window
   onkeydown={(e) => {
     if (e.key === "Escape") {
-      if (showCreateDialog && currentOperation !== "generating")
+      if (showErrorMessage) closeError();
+      else if (showCreateDialog && currentOperation !== "generating")
         showCreateDialog = false;
       else if (showDuplicateWarningDialog) cancelDuplicateWarning();
       else if (showDeleteDialog) closeDeleteDialog();
@@ -487,11 +533,35 @@
                       >
                         {list.name}
                       </h3>
-                      <p
-                        class="text-sm text-gray-500 dark:text-gray-400 break-all"
-                      >
-                        {list.path}
-                      </p>
+
+                      <div class="flex items-center group mt-1">
+                        <p
+                          class="text-sm text-gray-500 dark:text-gray-400 break-all"
+                        >
+                          {list.path}
+                        </p>
+                        <button
+                          class="ml-2 text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 focus:opacity-100 cursor-pointer disabled:opacity-0"
+                          onclick={() => changeMainPath(list)}
+                          title="Change Main Folder Path"
+                          disabled={isBusy}
+                        >
+                          <svg
+                            class="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+
                       <!-- Missing Algorithm Warning -->
                       {#if !list.available_algorithms.includes(settings.algorithm) && list.total_files > 0}
                         <div
@@ -1143,6 +1213,49 @@
           onclick={confirmDelete}
         >
           Delete
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Error Dialog -->
+{#if showErrorMessage}
+  <div
+    class="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center p-4 z-60"
+  >
+    <div
+      class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm p-6 border-l-4 border-red-500"
+    >
+      <h2
+        class="text-xl font-bold mb-3 text-red-600 dark:text-red-400 flex items-center"
+      >
+        <svg
+          class="w-6 h-6 mr-2"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          ></path>
+        </svg>
+        Error
+      </h2>
+
+      <p class="text-gray-600 dark:text-gray-300 mb-6 text-sm wrap-break-word">
+        {showErrorMessage}
+      </p>
+
+      <div class="flex justify-end">
+        <button
+          class="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 transition font-medium cursor-pointer"
+          onclick={closeError}
+        >
+          OK
         </button>
       </div>
     </div>
