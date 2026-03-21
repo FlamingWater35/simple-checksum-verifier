@@ -225,8 +225,13 @@
     }
   }
 
-  async function changeMainPath(list: FolderListSummary) {
+  async function changeMainPath(list: FolderListSummary, event: Event) {
     if (isBusy) return;
+
+    if (event?.currentTarget instanceof HTMLElement) {
+      event.currentTarget.blur();
+    }
+
     const newPath = await invoke<string | null>("select_folder");
     if (newPath) {
       if (list.backups.includes(newPath)) {
@@ -541,8 +546,8 @@
                           {list.path}
                         </p>
                         <button
-                          class="ml-2 text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 focus:opacity-100 cursor-pointer disabled:opacity-0"
-                          onclick={() => changeMainPath(list)}
+                          class="ml-2 text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 focus-visible:opacity-100 cursor-pointer disabled:opacity-0"
+                          onclick={(e) => changeMainPath(list, e)}
                           title="Change Main Folder Path"
                           disabled={isBusy}
                         >
@@ -562,7 +567,6 @@
                         </button>
                       </div>
 
-                      <!-- Missing Algorithm Warning -->
                       {#if !list.available_algorithms.includes(settings.algorithm) && list.total_files > 0}
                         <div
                           class="text-orange-600 dark:text-orange-400 text-xs mt-1.5 flex items-center font-medium"
