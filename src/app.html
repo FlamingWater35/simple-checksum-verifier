@@ -5,6 +5,18 @@
     <link rel="icon" href="%sveltekit.assets%/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Simple Checksum Verifier</title>
+    <script>
+      try {
+        var theme = localStorage.getItem("app-theme") || "auto";
+        if (
+          theme === "dark" ||
+          (theme === "auto" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches)
+        ) {
+          document.documentElement.classList.add("dark");
+        }
+      } catch (e) {}
+    </script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">

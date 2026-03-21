@@ -88,6 +88,9 @@
 
   function applyTheme() {
     if (!window) return;
+
+    localStorage.setItem("app-theme", settings.theme);
+
     const isDark =
       settings.theme === "dark" ||
       (settings.theme === "auto" &&
