@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { AppSettings } from "$lib/types";
   import { fade, fly } from "svelte/transition";
+  import { Select } from "bits-ui";
 
   let {
     settings = $bindable(),
@@ -11,18 +12,36 @@
     onClose: () => void;
     onUpdate: () => void;
   } = $props();
+
+  const themes = [
+    { value: "auto", label: "Automatic (System)" },
+    { value: "light", label: "Light" },
+    { value: "dark", label: "Dark" },
+  ];
+
+  const algorithms = [
+    { value: "sha256", label: "SHA-256 (Default)" },
+    { value: "blake2b", label: "BLAKE2b (Faster on 64-bit)" },
+  ];
+
+  const selectedThemeLabel = $derived(
+    themes.find((t) => t.value === settings.theme)?.label,
+  );
+  const selectedAlgoLabel = $derived(
+    algorithms.find((a) => a.value === settings.algorithm)?.label,
+  );
 </script>
 
 <div
-  class="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center p-4 z-50"
+  class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 dark:bg-black/70"
   transition:fade={{ duration: 150 }}
 >
   <div
-    class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-6"
+    class="w-full max-w-md p-6 bg-white shadow-xl dark:bg-gray-800 rounded-xl"
     transition:fly={{ y: 20, duration: 250 }}
   >
     <h2
-      class="text-xl font-bold mb-4 text-gray-900 dark:text-white flex items-center"
+      class="flex items-center mb-6 text-xl font-bold text-gray-900 dark:text-white"
     >
       <svg
         class="w-6 h-6 mr-2 text-gray-500"
@@ -46,93 +65,174 @@
       App Settings
     </h2>
 
-    <div class="space-y-6 mb-6">
+    <div class="space-y-6 mb-8">
       <!-- Theme Selection -->
-      <div>
+      <div class="space-y-2">
         <label
-          for="theme-select"
-          class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-          >Theme</label
+          for="theme-trigger"
+          class="block text-sm font-semibold text-gray-700 dark:text-gray-300"
+          >Theme Preference</label
         >
-        <div class="relative">
-          <select
-            id="theme-select"
-            bind:value={settings.theme}
-            onchange={onUpdate}
-            class="appearance-none w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 hover:bg-gray-100 dark:bg-gray-700/50 dark:hover:bg-gray-700 text-gray-900 dark:text-white transition-colors cursor-pointer shadow-sm"
+        <Select.Root
+          type="single"
+          bind:value={settings.theme}
+          onValueChange={onUpdate}
+          items={themes}
+        >
+          <Select.Trigger
+            id="theme-trigger"
+            class="inline-flex items-center justify-between w-full px-4 py-2.5 text-sm transition-all border border-gray-300 rounded-lg shadow-sm bg-gray-50 dark:bg-gray-700/50 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="auto">Automatic (System)</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
-          <div
-            class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-500 dark:text-gray-400"
-          >
+            <span class="text-gray-900 dark:text-gray-100"
+              >{selectedThemeLabel}</span
+            >
             <svg
-              class="w-4 h-4"
+              class="w-4 h-4 text-gray-500"
               fill="none"
-              stroke="currentColor"
               viewBox="0 0 24 24"
+              stroke="currentColor"
             >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 stroke-width="2"
                 d="M19 9l-7 7-7-7"
-              ></path>
+              />
             </svg>
-          </div>
-        </div>
+          </Select.Trigger>
+          <Select.Portal>
+            <Select.Content
+              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-xl outline-none"
+              sideOffset={4}
+            >
+              <Select.Viewport>
+                {#each themes as theme}
+                  <Select.Item
+                    value={theme.value}
+                    label={theme.label}
+                    class="relative flex items-center w-full py-2 pl-4 pr-10 text-sm transition-colors rounded-lg cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
+                  >
+                    {#snippet children({ selected })}
+                      {theme.label}
+                      {#if selected}
+                        <div
+                          class="absolute right-3 flex items-center justify-center"
+                        >
+                          <svg
+                            class="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="3"
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </div>
+                      {/if}
+                    {/snippet}
+                  </Select.Item>
+                {/each}
+              </Select.Viewport>
+            </Select.Content>
+          </Select.Portal>
+        </Select.Root>
       </div>
 
       <!-- Algorithm Selection -->
-      <div>
+      <div class="space-y-2">
         <label
-          for="algo-select"
-          class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+          for="algo-trigger"
+          class="block text-sm font-semibold text-gray-700 dark:text-gray-300"
           >Hashing Algorithm</label
         >
-        <div class="relative">
-          <select
-            id="algo-select"
-            bind:value={settings.algorithm}
-            onchange={onUpdate}
-            class="appearance-none w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 hover:bg-gray-100 dark:bg-gray-700/50 dark:hover:bg-gray-700 text-gray-900 dark:text-white transition-colors cursor-pointer shadow-sm"
+        <Select.Root
+          type="single"
+          bind:value={settings.algorithm}
+          onValueChange={onUpdate}
+          items={algorithms}
+        >
+          <Select.Trigger
+            id="algo-trigger"
+            class="inline-flex items-center justify-between w-full px-4 py-2.5 text-sm transition-all border border-gray-300 rounded-lg shadow-sm bg-gray-50 dark:bg-gray-700/50 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="sha256">SHA-256 (Default)</option>
-            <option value="blake2b">BLAKE2b (Faster on 64-bit CPUs)</option>
-          </select>
-          <div
-            class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-500 dark:text-gray-400"
-          >
+            <span class="text-gray-900 dark:text-gray-100"
+              >{selectedAlgoLabel}</span
+            >
             <svg
-              class="w-4 h-4"
+              class="w-4 h-4 text-gray-500"
               fill="none"
-              stroke="currentColor"
               viewBox="0 0 24 24"
+              stroke="currentColor"
             >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 stroke-width="2"
                 d="M19 9l-7 7-7-7"
-              ></path>
+              />
             </svg>
-          </div>
-        </div>
+          </Select.Trigger>
+          <Select.Portal>
+            <Select.Content
+              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-xl outline-none"
+              sideOffset={4}
+            >
+              <Select.Viewport>
+                {#each algorithms as algo}
+                  <Select.Item
+                    value={algo.value}
+                    label={algo.label}
+                    class="relative flex items-center w-full py-2 pl-4 pr-10 text-sm transition-colors rounded-lg cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
+                  >
+                    {#snippet children({ selected })}
+                      {algo.label}
+                      {#if selected}
+                        <div
+                          class="absolute right-3 flex items-center justify-center"
+                        >
+                          <svg
+                            class="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="3"
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </div>
+                      {/if}
+                    {/snippet}
+                  </Select.Item>
+                {/each}
+              </Select.Viewport>
+            </Select.Content>
+          </Select.Portal>
+        </Select.Root>
+
         <p
-          class="mt-2 text-xs text-gray-500 dark:text-gray-400 leading-relaxed"
+          class="mt-3 text-xs text-gray-500 dark:text-gray-400 leading-relaxed bg-gray-100 dark:bg-gray-900/40 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700"
         >
-          Note: Changing the algorithm applies to future operations. Folders
-          without hashes for the newly selected algorithm will display a warning
-          badge until you click Update.
+          <span class="font-bold text-gray-700 dark:text-gray-300 mr-1"
+            >Note:</span
+          > Changing the algorithm applies to future operations. Folders without
+          hashes for the newly selected algorithm will display a warning badge.
         </p>
       </div>
     </div>
 
-    <div class="flex justify-end">
+    <div
+      class="flex justify-end pt-2 border-t border-gray-100 dark:border-gray-700"
+    >
       <button
-        class="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 transition font-medium cursor-pointer shadow-sm"
+        class="px-5 py-2 font-medium text-gray-800 transition bg-gray-200 rounded-lg shadow-sm cursor-pointer dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 hover:bg-gray-300"
         onclick={onClose}
       >
         Close
