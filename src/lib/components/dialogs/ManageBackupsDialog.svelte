@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { FolderListSummary } from "$lib/types";
+  import { fade, fly } from "svelte/transition";
 
   let {
     activeBackupList,
@@ -16,9 +17,11 @@
 
 <div
   class="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center p-4 z-50"
+  transition:fade={{ duration: 150 }}
 >
   <div
     class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg p-6 flex flex-col max-h-[80vh]"
+    transition:fly={{ y: 20, duration: 250 }}
   >
     <h2 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">
       Manage Backups
@@ -75,13 +78,13 @@
 
     <div class="flex justify-between space-x-3 mt-auto">
       <button
-        class="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white transition font-medium cursor-pointer"
+        class="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white transition font-medium cursor-pointer shadow-sm"
         onclick={onAdd}
       >
         + Add Backup Location
       </button>
       <button
-        class="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition font-medium cursor-pointer"
+        class="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition font-medium cursor-pointer shadow-sm"
         onclick={onClose}
       >
         Close

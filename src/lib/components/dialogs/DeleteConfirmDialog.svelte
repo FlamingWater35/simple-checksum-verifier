@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { fade, fly } from "svelte/transition";
+
   let {
     folderName,
     onCancel,
@@ -12,9 +14,11 @@
 
 <div
   class="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center p-4 z-50"
+  transition:fade={{ duration: 150 }}
 >
   <div
     class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm p-6"
+    transition:fly={{ y: 20, duration: 250 }}
   >
     <h2 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">
       Confirm Deletion
@@ -28,13 +32,13 @@
 
     <div class="flex justify-end space-x-3">
       <button
-        class="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition font-medium cursor-pointer"
+        class="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition font-medium cursor-pointer shadow-sm"
         onclick={onCancel}
       >
         Cancel
       </button>
       <button
-        class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition font-medium cursor-pointer"
+        class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition font-medium cursor-pointer shadow-sm"
         onclick={onConfirm}
       >
         Delete

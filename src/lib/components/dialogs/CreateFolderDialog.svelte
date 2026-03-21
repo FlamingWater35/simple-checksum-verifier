@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Progress } from "$lib/types";
+  import { fade, fly } from "svelte/transition";
 
   let {
     selectedPath,
@@ -22,9 +23,11 @@
 
 <div
   class="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center p-4 z-50"
+  transition:fade={{ duration: 150 }}
 >
   <div
     class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-6"
+    transition:fly={{ y: 20, duration: 250 }}
   >
     <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">
       Add Folder List
@@ -36,7 +39,7 @@
         >Selected Path</span
       >
       <div
-        class="p-2 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-600 dark:text-gray-300 break-all"
+        class="p-2 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-600 dark:text-gray-300 break-all border border-gray-200 dark:border-gray-600 shadow-sm"
       >
         {selectedPath}
       </div>
@@ -53,13 +56,13 @@
         type="text"
         bind:value={newFolderName}
         disabled={currentOperation === "generating"}
-        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:opacity-50"
+        class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white disabled:opacity-50 shadow-sm transition-colors"
       />
     </div>
 
     {#if currentOperation === "generating" && operationProgress}
       <div
-        class="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600"
+        class="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 shadow-sm"
       >
         <div class="flex justify-between items-center mb-2">
           <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -77,7 +80,7 @@
                 : 0}%
             </span>
             <button
-              class="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800 px-3 py-1 rounded text-xs font-medium transition cursor-pointer"
+              class="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800 px-3 py-1 rounded text-xs font-medium transition cursor-pointer shadow-sm"
               onclick={onStop}
             >
               Stop
@@ -85,7 +88,7 @@
           </div>
         </div>
         <div
-          class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 mb-2"
+          class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 mb-2 overflow-hidden shadow-inner"
         >
           <div
             class="bg-blue-600 dark:bg-blue-500 h-2.5 rounded-full transition-all duration-300"
@@ -103,14 +106,14 @@
 
     <div class="flex justify-end space-x-3">
       <button
-        class="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition font-medium disabled:opacity-50 cursor-pointer"
+        class="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition font-medium disabled:opacity-50 cursor-pointer shadow-sm"
         onclick={onCancel}
         disabled={currentOperation === "generating"}
       >
         Cancel
       </button>
       <button
-        class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition font-medium disabled:opacity-50 cursor-pointer"
+        class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition font-medium disabled:opacity-50 cursor-pointer shadow-sm"
         onclick={onGenerate}
         disabled={currentOperation === "generating" || !newFolderName}
       >

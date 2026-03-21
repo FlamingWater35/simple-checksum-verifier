@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { fade, fly } from "svelte/transition";
+
   let {
     message,
     onClose,
@@ -10,9 +12,11 @@
 
 <div
   class="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center p-4 z-60"
+  transition:fade={{ duration: 150 }}
 >
   <div
     class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm p-6 border-l-4 border-red-500"
+    transition:fly={{ y: 20, duration: 250 }}
   >
     <h2
       class="text-xl font-bold mb-3 text-red-600 dark:text-red-400 flex items-center"
@@ -39,7 +43,7 @@
 
     <div class="flex justify-end">
       <button
-        class="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 transition font-medium cursor-pointer"
+        class="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 transition font-medium cursor-pointer shadow-sm"
         onclick={onClose}
       >
         OK
