@@ -7,18 +7,26 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-purple)
 
-An application for hashing files inside selected folders and verifying their checksums easily and conveniently. It creates "snapshots" of your folders and compares them against the live state to detect changes, deletions, or corruption.
+An application for hashing files inside selected folders and verifying their checksums with high performance. It creates "snapshots" of your folders and compares them against the live state to detect bit-rot, accidental edits, deletions, or new files.
 
 ## ✨ Features
 
-- **Folder Snapshots:** Select any folder to generate SHA-256 checksums for all contained files.
-- **Visual Verification:** Navigate a recursive tree view with color-coded statuses:
-  - <span style="color: #22c55e">●</span> **Match**: File is unchanged.
-  - <span style="color: #ef4444">●</span> **Mismatch**: File content has been modified.
-  - <span style="color: #f97316">●</span> **Missing**: File was deleted or moved.
-  - <span style="color: #a855f7">●</span> **Untracked**: New file added since the snapshot.
-- **Local Storage:** Saved folder lists are stored locally in `%LOCALAPPDATA%`.
-- **Modern UI:** Native dark/light mode support.
+- **Multi-Algorithm Support:** Choose between **SHA-256** for compatibility or **BLAKE2b** / **BLAKE3** for fast, multi-threaded hashing.
+- **Backups:** Configure multiple backup locations for each added folder. Verification checks the main folder and all backups simultaneously against a single snapshot.
+- **Smart Verification Modes:**
+  - **Quick Mode:** Instantly detects changes by comparing file metadata (size and modification date).
+  - **Deep Mode:** Reads every byte to ensure absolute data integrity and detect silent corruption.
+- **High Performance:** Uses parallel data processing, helping SSD/HDD read speeds during large scans.
+- **Visual Verification:** Navigate a tree view with a clear status for each file:
+  - 🟢 **Match**: File is unchanged.
+  - 🔴 **Mismatch**: File content differs from the snapshot (Deep Mode).
+  - 🟡 **Modified**: Metadata (size/date) has changed (Quick Mode).
+  - 🟠 **Missing**: File was deleted or moved.
+  - 🟣 **Untracked**: New file added since the snapshot was created.
+- **Management:** Edit folder paths, update snapshots (rehash) without re-adding, and search through large folder lists instantly.
+- **Other Features:**
+  - Native **Dark** theme support.
+  - Automatic update checks.
 
 ## 📋 Requirements
 
