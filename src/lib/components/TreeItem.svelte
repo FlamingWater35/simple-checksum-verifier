@@ -19,6 +19,8 @@
         return "text-green-700 bg-green-50 border-green-200 dark:text-green-300 dark:bg-green-900/30 dark:border-green-800";
       case "Mismatch":
         return "text-red-700 bg-red-50 border-red-200 dark:text-red-300 dark:bg-red-900/30 dark:border-red-800";
+      case "Modified":
+        return "text-yellow-700 bg-yellow-50 border-yellow-200 dark:text-yellow-300 dark:bg-yellow-900/30 dark:border-yellow-800";
       case "Missing":
         return "text-orange-700 bg-orange-50 border-orange-200 dark:text-orange-300 dark:bg-orange-900/30 dark:border-orange-800";
       case "Untracked":
@@ -34,6 +36,8 @@
         return "bg-green-500 dark:bg-green-400";
       case "Mismatch":
         return "bg-red-500 dark:bg-red-400";
+      case "Modified":
+        return "bg-yellow-500 dark:bg-yellow-400";
       case "Missing":
         return "bg-orange-500 dark:bg-orange-400";
       case "Untracked":

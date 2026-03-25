@@ -18,7 +18,7 @@ export type Progress = {
 export type TreeNode = {
   node_type: "File" | "Directory";
   name: string;
-  status: string; // "Match", "Mismatch", "Missing", "Untracked"
+  status: string; // "Match", "Mismatch", "Missing", "Untracked", "Modified"
   children?: TreeNode[];
 };
 
@@ -34,5 +34,6 @@ export type FullVerifyResult = {
 
 export type AppSettings = {
   theme: "auto" | "light" | "dark";
-  algorithm: "sha256" | "blake2b";
+  algorithm: "sha256" | "blake2b" | "blake3";
+  verify_depth: "quick" | "deep";
 };

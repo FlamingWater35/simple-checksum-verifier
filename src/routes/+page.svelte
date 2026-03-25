@@ -28,7 +28,11 @@
   let operationProgress: Progress | null = $state(null);
 
   // Settings State
-  let settings: AppSettings = $state({ theme: "auto", algorithm: "sha256" });
+  let settings: AppSettings = $state({
+    theme: "auto",
+    algorithm: "sha256",
+    verify_depth: "deep",
+  });
   let showSettingsDialog = $state(false);
   let themeQueryMedia: MediaQueryList | null = null;
 
@@ -352,6 +356,7 @@
       verifyResult = await invoke<FullVerifyResult>("verify_folder_contents", {
         id,
         algorithm: settings.algorithm,
+        verifyDepth: settings.verify_depth,
       });
     } catch (e) {
       if (e !== "Cancelled") showError("Error: " + e);
