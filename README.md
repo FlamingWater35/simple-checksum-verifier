@@ -13,7 +13,7 @@ An application for hashing files inside selected folders and verifying their che
 
 - **Multi-Algorithm Support:** Choose between **SHA-256** for compatibility or **BLAKE2b** / **BLAKE3** for fast, multi-threaded hashing.
 - **Backups:** Configure multiple backup locations for each added folder. Verification checks the main folder and all backups simultaneously against a single snapshot.
-- **Smart Verification Modes:**
+- **Verification Modes:**
   - **Quick Mode:** Instantly detects changes by comparing file metadata (size and modification date).
   - **Deep Mode:** Reads every byte to ensure absolute data integrity and detect silent corruption.
 - **High Performance:** Uses parallel data processing, helping SSD/HDD read speeds during large scans.
