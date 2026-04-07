@@ -34,6 +34,6 @@ export type FullVerifyResult = {
 
 export type AppSettings = {
   theme: "auto" | "light" | "dark";
-  algorithm: "sha256" | "blake2b" | "blake3";
+  algorithm: "sha256" | "blake2b" | "blake3" | "sha1" | "md5";
   verify_depth: "quick" | "deep";
 };

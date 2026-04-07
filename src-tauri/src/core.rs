@@ -1,6 +1,8 @@
 use crate::models::{FileMetadata, Progress, TreeNode};
 use blake2::Blake2b512;
+use md5::Md5;
 use rayon::prelude::*;
+use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
@@ -38,6 +40,34 @@ fn hash_file(
         }
         "blake2b" => {
             let mut hasher = Blake2b512::new();
+            loop {
+                if cancel_flag.load(Ordering::Relaxed) {
+                    return Ok(None);
+                }
+                let count = reader.read(&mut buffer)?;
+                if count == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..count]);
+            }
+            Ok(Some(format!("{:x}", hasher.finalize())))
+        }
+        "sha1" => {
+            let mut hasher = Sha1::new();
+            loop {
+                if cancel_flag.load(Ordering::Relaxed) {
+                    return Ok(None);
+                }
+                let count = reader.read(&mut buffer)?;
+                if count == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..count]);
+            }
+            Ok(Some(format!("{:x}", hasher.finalize())))
+        }
+        "md5" => {
+            let mut hasher = Md5::new();
             loop {
                 if cancel_flag.load(Ordering::Relaxed) {
                     return Ok(None);

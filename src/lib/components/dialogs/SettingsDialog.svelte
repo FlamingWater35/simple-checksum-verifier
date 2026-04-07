@@ -23,6 +23,8 @@
     { value: "sha256", label: "SHA-256 (Compatibility)" },
     { value: "blake2b", label: "BLAKE2b (Fast 64-bit)" },
     { value: "blake3", label: "BLAKE3 (Ultra Fast)" },
+    { value: "sha1", label: "SHA-1 (Legacy)" },
+    { value: "md5", label: "MD5 (Legacy/Fast)" },
   ];
 
   const verifyDepths = [
