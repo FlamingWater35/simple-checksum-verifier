@@ -14,7 +14,8 @@
       {
         "title": "Simple Checksum Verifier",
         "width": 1000,
-        "height": 700
+        "height": 700,
+        "backgroundColor": "#111827"
       }
     ],
     "security": {
