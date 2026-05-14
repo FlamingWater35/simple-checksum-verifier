@@ -87,8 +87,8 @@ To build from source:
 
 Snapshots and settings are stored locally:
 
-- **Windows:** `%LOCALAPPDATA%\com.flamingwater.simple-checksum-verifier\`
-- **Linux:** `~/.local/share/com.flamingwater.simple-checksum-verifier/`
+- **Windows:** `%LOCALAPPDATA%\SimpleChecksumVerifier\`
+- **Linux:** `~/.local/share/SimpleChecksumVerifier/`
 
 ## 📜 License
 
