@@ -100,7 +100,9 @@
       App Settings
     </h2>
 
-    <div class="space-y-6 mb-4 overflow-y-auto pr-2 hide-scrollbar">
+    <div
+      class="space-y-6 overflow-y-auto pr-3 -mr-2 pl-2 -ml-2 py-2 -my-2 custom-scrollbar"
+    >
       <div class="space-y-2">
         <label
           for="theme-trigger"
@@ -135,7 +137,7 @@
           </Select.Trigger>
           <Select.Portal>
             <Select.Content
-              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-xl outline-none"
+              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1.5 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-lg outline-none"
               sideOffset={4}
             >
               <Select.Viewport>
@@ -143,7 +145,7 @@
                   <Select.Item
                     value={theme.value}
                     label={theme.label}
-                    class="relative flex items-center w-full py-2 pl-4 pr-10 text-sm transition-colors rounded-lg cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
+                    class="relative flex items-center w-full py-2.5 px-3 pr-10 text-sm transition-colors rounded-md cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
                   >
                     {#snippet children({ selected })}
                       {theme.label}
@@ -208,7 +210,7 @@
           </Select.Trigger>
           <Select.Portal>
             <Select.Content
-              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-xl outline-none"
+              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1.5 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-lg outline-none"
               sideOffset={4}
             >
               <Select.Viewport>
@@ -216,7 +218,7 @@
                   <Select.Item
                     value={algo.value}
                     label={algo.label}
-                    class="relative flex items-center w-full py-2 pl-4 pr-10 text-sm transition-colors rounded-lg cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
+                    class="relative flex items-center w-full py-2.5 px-3 pr-10 text-sm transition-colors rounded-md cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
                   >
                     {#snippet children({ selected })}
                       {algo.label}
@@ -281,7 +283,7 @@
           </Select.Trigger>
           <Select.Portal>
             <Select.Content
-              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-xl outline-none"
+              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1.5 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-lg outline-none"
               sideOffset={4}
             >
               <Select.Viewport>
@@ -289,7 +291,7 @@
                   <Select.Item
                     value={depth.value}
                     label={depth.label}
-                    class="relative flex items-center w-full py-2 pl-4 pr-10 text-sm transition-colors rounded-lg cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
+                    class="relative flex items-center w-full py-2.5 px-3 pr-10 text-sm transition-colors rounded-md cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
                   >
                     {#snippet children({ selected })}
                       {depth.label}
@@ -359,7 +361,7 @@
           </Select.Trigger>
           <Select.Portal>
             <Select.Content
-              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-xl outline-none"
+              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1.5 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-lg outline-none"
               sideOffset={4}
             >
               <Select.Viewport>
@@ -367,7 +369,7 @@
                   <Select.Item
                     value={mode.value}
                     label={mode.label}
-                    class="relative flex items-center w-full py-2 pl-4 pr-10 text-sm transition-colors rounded-lg cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
+                    class="relative flex items-center w-full py-2.5 px-3 pr-10 text-sm transition-colors rounded-md cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
                   >
                     {#snippet children({ selected })}
                       {mode.label}
@@ -432,7 +434,7 @@
           </Select.Trigger>
           <Select.Portal>
             <Select.Content
-              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-xl outline-none"
+              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1.5 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-lg outline-none"
               sideOffset={4}
             >
               <Select.Viewport>
@@ -440,7 +442,7 @@
                   <Select.Item
                     value={bSize.value}
                     label={bSize.label}
-                    class="relative flex items-center w-full py-2 pl-4 pr-10 text-sm transition-colors rounded-lg cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
+                    class="relative flex items-center w-full py-2.5 px-3 pr-10 text-sm transition-colors rounded-md cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
                   >
                     {#snippet children({ selected })}
                       {bSize.label}
@@ -473,7 +475,7 @@
     </div>
 
     <div
-      class="flex justify-end pt-4 border-t border-gray-100 dark:border-gray-700 mt-auto"
+      class="flex justify-end pt-5 border-t border-gray-100 dark:border-gray-700 mt-2"
     >
       <button
         class="px-5 py-2 font-medium text-gray-800 transition bg-gray-200 rounded-lg shadow-sm cursor-pointer dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 hover:bg-gray-300"
