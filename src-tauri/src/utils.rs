@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 pub fn get_app_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let path = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let mut path = app.path().local_data_dir().map_err(|e| e.to_string())?;
+    path.push("SimpleChecksumVerifier");
     fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     Ok(path)
 }
