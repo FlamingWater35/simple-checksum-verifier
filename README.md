@@ -2,31 +2,34 @@
 
 [![Tauri](https://img.shields.io/badge/Tauri-24C8D8?logo=tauri&logoColor=fff)](https://tauri.app/)
 [![Svelte](https://img.shields.io/badge/Svelte-%23f1413d.svg?logo=svelte&logoColor=white)](https://svelte.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-%2338B2AC.svg?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Latest release](https://img.shields.io/github/v/release/FlamingWater35/simple-checksum-verifier)](https://github.com/FlamingWater35/simple-checksum-verifier/releases)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/FlamingWater35/simple-checksum-verifier/create-draft-release.yml?label=build)](https://github.com/FlamingWater35/simple-checksum-verifier/actions/workflows/create-draft-release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-purple)
 
-An application for hashing files inside selected folders and verifying their checksums with high performance. It creates "snapshots" of your folders and compares them against the live state to detect bit-rot, accidental edits, deletions, or new files.
+A high-performance file integrity tool for hashing directories and verifying checksums. It creates "snapshots" of your folders and compares them against the live state to detect bit-rot, accidental edits, deletions, or new files.
 
 ## ✨ Features
 
-- **Multi-Algorithm Support:** Choose between multiple hashing algorithms (including **MD5**, **SHA-256** and **BLAKE3**) for fast, multi-threaded hashing.
-- **Backups:** Configure multiple backup locations for each added folder. Verification checks the main folder and all backups simultaneously against a single snapshot.
+- **Multi-Algorithm Support:** High-speed hashing using **BLAKE3**, **BLAKE2b**, **SHA-256**, **SHA-1**, or **MD5**.
+- **Backup Synchronization:** Link multiple backup locations to a single folder. Verify the integrity of your main source and all backups simultaneously against one snapshot.
 - **Verification Modes:**
   - **Quick Mode:** Instantly detects changes by comparing file metadata (size and modification date).
-  - **Deep Mode:** Reads every byte to ensure absolute data integrity and detect silent corruption.
-- **High Performance:** Uses parallel data processing, helping SSD/HDD read speeds during large scans.
-- **Visual Verification:** Navigate a tree view with a clear status for each file:
+  - **Deep Mode:** Performs a full cryptographic hash check to ensure absolute data integrity and detect silent bit-rot.
+- **Performance Options:**
+  - **Concurrency Control:** Switch between **Parallel** mode (best for NVMe/SSDs) and **Sequential** mode (best for HDDs).
+  - **Adjustable I/O:** Fine-tune read performance with customizable buffer sizes (128KB, 256KB, or 512KB).
+- **Visual Verification Tree:** Navigate scan results with clear status indicators:
   - 🟢 **Match**: File is unchanged.
-  - 🔴 **Mismatch**: File content differs from the snapshot (Deep Mode).
-  - 🟡 **Modified**: Metadata (size/date) has changed (Quick Mode).
+  - 🔴 **Mismatch**: File content differs from the snapshot.
+  - 🟡 **Modified**: Metadata (size/date) has changed.
   - 🟠 **Missing**: File was deleted or moved.
-  - 🟣 **Untracked**: New file added since the snapshot was created.
-- **Management:** Edit folder paths, update snapshots (rehash) without re-adding, and search through large folder lists instantly.
-- **Other Features:**
-  - Native **Dark** theme support.
-  - Automatic update checks.
+  - 🟣 **Untracked**: New file added since the snapshot.
+  - 🌹 **Access Denied**: File could not be read due to OS permissions.
+- **Modern UI/UX:**
+  - Native theme mode support.
+  - Memory-efficient snapshot handling using buffered streaming.
+  - Automatic update checks via GitHub API.
 
 ## 📋 Requirements
 
@@ -37,7 +40,7 @@ An application for hashing files inside selected folders and verifying their che
 
 ### Development Requirements
 
-To build this project from source, you need:
+To build from source:
 
 1. **Rust:** [Install Rust](https://www.rust-lang.org/tools/install) (latest stable version).
 2. **Node.js:** [Install Node.js](https://nodejs.org/) (v20 or newer recommended).
@@ -77,15 +80,15 @@ To build this project from source, you need:
 
 ## 🛠️ Tech Stack
 
-- **Frontend:** [Svelte](https://svelte.dev/), [Tailwind CSS](https://tailwindcss.com/)
+- **Frontend:** [Svelte](https://svelte.dev/), [Tailwind CSS](https://tailwindcss.com/), [Bits-UI](https://bits-ui.com/)
 - **Backend:** [Rust](https://www.rust-lang.org/), [Tauri](https://tauri.app/)
 
 ## 📁 Data Storage Location
 
-The application stores your folder list metadata and checksums as JSON files in:
+Snapshots and settings are stored locally:
 
-- **Windows:** `%LOCALAPPDATA%\com.flamingwater.simple-checksum-verifier\folder_lists\`
-- **Linux:** `~/.local/share/com.flamingwater.simple-checksum-verifier/folder_lists/`
+- **Windows:** `%LOCALAPPDATA%\com.flamingwater.simple-checksum-verifier\`
+- **Linux:** `~/.local/share/com.flamingwater.simple-checksum-verifier/`
 
 ## 📜 License
 
