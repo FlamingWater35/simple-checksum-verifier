@@ -6,7 +6,7 @@ use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{BufReader, Read};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -18,10 +18,10 @@ fn hash_file(
     path: &Path,
     cancel_flag: &Arc<AtomicBool>,
     algorithm: &str,
+    buffer_size: usize,
 ) -> std::io::Result<Option<String>> {
-    let file = fs::File::open(path)?;
-    let mut reader = BufReader::new(file);
-    let mut buffer = [0; 65536];
+    let mut file = fs::File::open(path)?;
+    let mut buffer = vec![0; buffer_size];
 
     match algorithm {
         "blake3" => {
@@ -30,7 +30,7 @@ fn hash_file(
                 if cancel_flag.load(Ordering::Relaxed) {
                     return Ok(None);
                 }
-                let count = reader.read(&mut buffer)?;
+                let count = file.read(&mut buffer)?;
                 if count == 0 {
                     break;
                 }
@@ -44,7 +44,7 @@ fn hash_file(
                 if cancel_flag.load(Ordering::Relaxed) {
                     return Ok(None);
                 }
-                let count = reader.read(&mut buffer)?;
+                let count = file.read(&mut buffer)?;
                 if count == 0 {
                     break;
                 }
@@ -58,7 +58,7 @@ fn hash_file(
                 if cancel_flag.load(Ordering::Relaxed) {
                     return Ok(None);
                 }
-                let count = reader.read(&mut buffer)?;
+                let count = file.read(&mut buffer)?;
                 if count == 0 {
                     break;
                 }
@@ -72,7 +72,7 @@ fn hash_file(
                 if cancel_flag.load(Ordering::Relaxed) {
                     return Ok(None);
                 }
-                let count = reader.read(&mut buffer)?;
+                let count = file.read(&mut buffer)?;
                 if count == 0 {
                     break;
                 }
@@ -86,7 +86,7 @@ fn hash_file(
                 if cancel_flag.load(Ordering::Relaxed) {
                     return Ok(None);
                 }
-                let count = reader.read(&mut buffer)?;
+                let count = file.read(&mut buffer)?;
                 if count == 0 {
                     break;
                 }
@@ -103,6 +103,8 @@ pub fn compute_folder_checksums(
     app_handle: &AppHandle,
     location_label: &str,
     algorithm: &str,
+    read_mode: &str,
+    buffer_size: usize,
 ) -> Result<
     (
         HashMap<String, String>,
@@ -123,9 +125,10 @@ pub fn compute_folder_checksums(
     let cancel_ref = cancel.clone();
     let target_path_ref = target_path.to_path_buf();
     let algo_ref = algorithm.to_string();
+    let mode_ref = read_mode.to_string();
 
     rayon::spawn(move || {
-        entries.into_par_iter().for_each_with(tx, |tx, entry| {
+        let process_entry = |entry: walkdir::DirEntry, sender: &std::sync::mpsc::Sender<_>| {
             if cancel_ref.load(Ordering::Relaxed) {
                 return;
             }
@@ -138,7 +141,10 @@ pub fn compute_folder_checksums(
                 .to_string()
                 .replace("\\", "/");
 
-            let meta = fs::metadata(file_path).ok();
+            let meta_res = fs::metadata(file_path);
+            let mut is_access_denied = meta_res.is_err();
+            let meta = meta_res.ok();
+
             let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
             let modified = meta
                 .as_ref()
@@ -147,11 +153,33 @@ pub fn compute_folder_checksums(
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
 
-            let metadata = FileMetadata { size, modified };
-            let hash_opt = hash_file(file_path, &cancel_ref, &algo_ref).unwrap_or(None);
+            let mut hash_opt = None;
+            if !is_access_denied {
+                match hash_file(file_path, &cancel_ref, &algo_ref, buffer_size) {
+                    Ok(Some(h)) => hash_opt = Some(h),
+                    Ok(None) => {}
+                    Err(_) => {
+                        is_access_denied = true;
+                    }
+                }
+            }
 
-            let _ = tx.send((relative_path, hash_opt, metadata));
-        });
+            let metadata = FileMetadata {
+                size,
+                modified,
+                is_access_denied,
+            };
+
+            let _ = sender.send((relative_path, hash_opt, metadata));
+        };
+
+        if mode_ref == "sequential" {
+            entries.into_iter().for_each(|e| process_entry(e, &tx));
+        } else {
+            entries
+                .into_par_iter()
+                .for_each_with(tx, |tx_ref, e| process_entry(e, tx_ref));
+        }
     });
 
     let mut checksums = HashMap::new();
@@ -197,6 +225,8 @@ pub fn verify_single_path(
     cancel: &Arc<AtomicBool>,
     app_handle: &AppHandle,
     location_label: &str,
+    read_mode: &str,
+    buffer_size: usize,
 ) -> Result<TreeNode, String> {
     let target_path = PathBuf::from(target_path_str);
 
@@ -213,9 +243,10 @@ pub fn verify_single_path(
     let target_path_ref = target_path.to_path_buf();
     let algo_ref = algorithm.to_string();
     let depth_ref = verify_depth.to_string();
+    let mode_ref = read_mode.to_string();
 
     rayon::spawn(move || {
-        entries.into_par_iter().for_each_with(tx, |tx, entry| {
+        let process_entry = |entry: walkdir::DirEntry, sender: &std::sync::mpsc::Sender<_>| {
             if cancel_ref.load(Ordering::Relaxed) {
                 return;
             }
@@ -228,7 +259,10 @@ pub fn verify_single_path(
                 .to_string()
                 .replace("\\", "/");
 
-            let meta = fs::metadata(file_path).ok();
+            let meta_res = fs::metadata(file_path);
+            let mut live_is_access_denied = meta_res.is_err();
+            let meta = meta_res.ok();
+
             let live_size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
             let live_modified = meta
                 .as_ref()
@@ -238,12 +272,32 @@ pub fn verify_single_path(
                 .unwrap_or(0);
 
             let mut hash_opt = None;
-            if depth_ref == "deep" {
-                hash_opt = hash_file(file_path, &cancel_ref, &algo_ref).unwrap_or(None);
+            if depth_ref == "deep" && !live_is_access_denied {
+                match hash_file(file_path, &cancel_ref, &algo_ref, buffer_size) {
+                    Ok(Some(h)) => hash_opt = Some(h),
+                    Ok(None) => {}
+                    Err(_) => {
+                        live_is_access_denied = true;
+                    }
+                }
             }
 
-            let _ = tx.send((relative_path, live_size, live_modified, hash_opt));
-        });
+            let _ = sender.send((
+                relative_path,
+                live_size,
+                live_modified,
+                live_is_access_denied,
+                hash_opt,
+            ));
+        };
+
+        if mode_ref == "sequential" {
+            entries.into_iter().for_each(|e| process_entry(e, &tx));
+        } else {
+            entries
+                .into_par_iter()
+                .for_each_with(tx, |tx_ref, e| process_entry(e, tx_ref));
+        }
     });
 
     let mut disk_checksums = HashMap::new();
@@ -251,12 +305,19 @@ pub fn verify_single_path(
     let mut processed = 0;
     let mut last_emit = Instant::now();
 
-    for (rel_path, size, modified, hash_opt) in rx {
+    for (rel_path, size, modified, is_access_denied, hash_opt) in rx {
         if cancel.load(Ordering::Relaxed) {
             return Err("Cancelled".into());
         }
 
-        disk_metadata.insert(rel_path.clone(), FileMetadata { size, modified });
+        disk_metadata.insert(
+            rel_path.clone(),
+            FileMetadata {
+                size,
+                modified,
+                is_access_denied,
+            },
+        );
         if let Some(hash) = hash_opt {
             disk_checksums.insert(rel_path.clone(), hash);
         }
@@ -299,6 +360,8 @@ pub fn verify_single_path(
 
         let status = if !disk_metadata.contains_key(&file_path) {
             "Missing"
+        } else if disk_metadata.get(&file_path).unwrap().is_access_denied {
+            "Access Denied"
         } else if !is_tracked {
             "Untracked"
         } else {
@@ -306,7 +369,9 @@ pub fn verify_single_path(
 
             if verify_depth == "quick" {
                 if let Some(s_m) = saved_metadata.get(&file_path) {
-                    if s_m.size == d_m.size && s_m.modified == d_m.modified {
+                    if s_m.is_access_denied {
+                        "Modified"
+                    } else if s_m.size == d_m.size && s_m.modified == d_m.modified {
                         "Match"
                     } else {
                         "Modified"
@@ -342,6 +407,7 @@ pub fn verify_single_path(
         let mut has_modified = false;
         let mut has_missing = false;
         let mut has_untracked = false;
+        let mut has_access_denied = false;
 
         for (dir_name, dir_builder) in builder.dirs {
             let node = build_tree(dir_name, dir_builder);
@@ -351,6 +417,7 @@ pub fn verify_single_path(
                     "Modified" => has_modified = true,
                     "Missing" => has_missing = true,
                     "Untracked" => has_untracked = true,
+                    "Access Denied" => has_access_denied = true,
                     _ => {}
                 }
             }
@@ -363,6 +430,7 @@ pub fn verify_single_path(
                 "Modified" => has_modified = true,
                 "Missing" => has_missing = true,
                 "Untracked" => has_untracked = true,
+                "Access Denied" => has_access_denied = true,
                 _ => {}
             }
             children.push(TreeNode::File {
@@ -389,6 +457,8 @@ pub fn verify_single_path(
 
         let status = if has_mismatch {
             "Mismatch"
+        } else if has_access_denied {
+            "Access Denied"
         } else if has_modified {
             "Modified"
         } else if has_missing {

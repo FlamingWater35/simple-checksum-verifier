@@ -6,6 +6,8 @@ pub struct AppSettings {
     pub theme: String,
     pub algorithm: String,
     pub verify_depth: String,
+    pub read_mode: String,
+    pub buffer_size: usize,
 }
 
 impl Default for AppSettings {
@@ -14,6 +16,8 @@ impl Default for AppSettings {
             theme: "auto".to_string(),
             algorithm: "sha256".to_string(),
             verify_depth: "deep".to_string(),
+            read_mode: "parallel".to_string(),
+            buffer_size: 262144, // 256KB Default
         }
     }
 }
@@ -22,6 +26,8 @@ impl Default for AppSettings {
 pub struct FileMetadata {
     pub size: u64,
     pub modified: u64,
+    #[serde(default)]
+    pub is_access_denied: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

@@ -18,7 +18,7 @@ export type Progress = {
 export type TreeNode = {
   node_type: "File" | "Directory";
   name: string;
-  status: string; // "Match", "Mismatch", "Missing", "Untracked", "Modified"
+  status: string; // "Match", "Mismatch", "Missing", "Untracked", "Modified", "Access Denied"
   children?: TreeNode[];
 };
 
@@ -36,4 +36,6 @@ export type AppSettings = {
   theme: "auto" | "light" | "dark";
   algorithm: "sha256" | "blake2b" | "blake3" | "sha1" | "md5";
   verify_depth: "quick" | "deep";
+  read_mode: "parallel" | "sequential";
+  buffer_size: number;
 };

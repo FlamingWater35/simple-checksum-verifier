@@ -32,6 +32,24 @@
     { value: "deep", label: "Deep (Read Entire File)" },
   ];
 
+  const readModes = [
+    { value: "parallel", label: "Parallel (NVMe / SSD Fast)" },
+    { value: "sequential", label: "Sequential (HDD Safe)" },
+  ];
+
+  const bufferSizes = [
+    { value: "131072", label: "128 KB" },
+    { value: "262144", label: "256 KB (Default)" },
+    { value: "524288", label: "512 KB" },
+  ];
+
+  let bufferSizeStr = $state(settings.buffer_size.toString());
+
+  function onBufferSizeChange(v: string) {
+    settings.buffer_size = parseInt(v, 10);
+    onUpdate();
+  }
+
   const selectedThemeLabel = $derived(
     themes.find((t) => t.value === settings.theme)?.label,
   );
@@ -41,6 +59,12 @@
   const selectedDepthLabel = $derived(
     verifyDepths.find((d) => d.value === settings.verify_depth)?.label,
   );
+  const selectedReadModeLabel = $derived(
+    readModes.find((r) => r.value === settings.read_mode)?.label,
+  );
+  const selectedBufferSizeLabel = $derived(
+    bufferSizes.find((b) => b.value === bufferSizeStr)?.label,
+  );
 </script>
 
 <div
@@ -48,11 +72,11 @@
   transition:fade={{ duration: 150 }}
 >
   <div
-    class="w-full max-w-md p-6 bg-white shadow-xl dark:bg-gray-800 rounded-xl"
+    class="w-full max-w-lg p-6 bg-white shadow-xl dark:bg-gray-800 rounded-xl max-h-[90vh] flex flex-col"
     transition:fly={{ y: 20, duration: 250 }}
   >
     <h2
-      class="flex items-center mb-6 text-xl font-bold text-gray-900 dark:text-white"
+      class="flex items-center mb-6 text-xl font-bold text-gray-900 dark:text-white shrink-0"
     >
       <svg
         class="w-6 h-6 mr-2 text-gray-500"
@@ -76,8 +100,7 @@
       App Settings
     </h2>
 
-    <div class="space-y-6 mb-8">
-      <!-- Theme Selection -->
+    <div class="space-y-6 mb-4 overflow-y-auto pr-2 hide-scrollbar">
       <div class="space-y-2">
         <label
           for="theme-trigger"
@@ -151,92 +174,6 @@
         </Select.Root>
       </div>
 
-      <!-- Verify Depth Selection -->
-      <div class="space-y-2">
-        <label
-          for="depth-trigger"
-          class="block text-sm font-semibold text-gray-700 dark:text-gray-300"
-          >Verification Depth</label
-        >
-        <Select.Root
-          type="single"
-          bind:value={settings.verify_depth}
-          onValueChange={onUpdate}
-          items={verifyDepths}
-        >
-          <Select.Trigger
-            id="depth-trigger"
-            class="inline-flex items-center justify-between w-full px-4 py-2.5 text-sm transition-all border border-gray-300 rounded-lg shadow-sm bg-gray-50 dark:bg-gray-700/50 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <span class="text-gray-900 dark:text-gray-100"
-              >{selectedDepthLabel}</span
-            >
-            <svg
-              class="w-4 h-4 text-gray-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              ><path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 9l-7 7-7-7"
-              /></svg
-            >
-          </Select.Trigger>
-          <Select.Portal>
-            <Select.Content
-              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-xl outline-none"
-              sideOffset={4}
-            >
-              <Select.Viewport>
-                {#each verifyDepths as depth}
-                  <Select.Item
-                    value={depth.value}
-                    label={depth.label}
-                    class="relative flex items-center w-full py-2 pl-4 pr-10 text-sm transition-colors rounded-lg cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
-                  >
-                    {#snippet children({ selected })}
-                      {depth.label}
-                      {#if selected}
-                        <div
-                          class="absolute right-3 flex items-center justify-center"
-                        >
-                          <svg
-                            class="w-4 h-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            ><path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="3"
-                              d="M5 13l4 4L19 7"
-                            /></svg
-                          >
-                        </div>
-                      {/if}
-                    {/snippet}
-                  </Select.Item>
-                {/each}
-              </Select.Viewport>
-            </Select.Content>
-          </Select.Portal>
-        </Select.Root>
-        <p
-          class="mt-2 text-xs text-gray-500 dark:text-gray-400 leading-relaxed bg-gray-100 dark:bg-gray-900/40 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700"
-        >
-          <span class="font-bold text-gray-700 dark:text-gray-300 mr-1"
-            >Quick:</span
-          >
-          Completes in milliseconds. Good for casual checks. <br />
-          <span class="font-bold text-gray-700 dark:text-gray-300 mr-1"
-            >Deep:</span
-          > Detects silent bit-rot. Slower on HDDs.
-        </p>
-      </div>
-
-      <!-- Algorithm Selection -->
       <div class="space-y-2">
         <label
           for="algo-trigger"
@@ -309,10 +246,234 @@
           </Select.Portal>
         </Select.Root>
       </div>
+
+      <div class="space-y-2">
+        <label
+          for="depth-trigger"
+          class="block text-sm font-semibold text-gray-700 dark:text-gray-300"
+          >Verification Depth</label
+        >
+        <Select.Root
+          type="single"
+          bind:value={settings.verify_depth}
+          onValueChange={onUpdate}
+          items={verifyDepths}
+        >
+          <Select.Trigger
+            id="depth-trigger"
+            class="inline-flex items-center justify-between w-full px-4 py-2.5 text-sm transition-all border border-gray-300 rounded-lg shadow-sm bg-gray-50 dark:bg-gray-700/50 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <span class="text-gray-900 dark:text-gray-100"
+              >{selectedDepthLabel}</span
+            >
+            <svg
+              class="w-4 h-4 text-gray-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              ><path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              /></svg
+            >
+          </Select.Trigger>
+          <Select.Portal>
+            <Select.Content
+              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-xl outline-none"
+              sideOffset={4}
+            >
+              <Select.Viewport>
+                {#each verifyDepths as depth}
+                  <Select.Item
+                    value={depth.value}
+                    label={depth.label}
+                    class="relative flex items-center w-full py-2 pl-4 pr-10 text-sm transition-colors rounded-lg cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
+                  >
+                    {#snippet children({ selected })}
+                      {depth.label}
+                      {#if selected}
+                        <div
+                          class="absolute right-3 flex items-center justify-center"
+                        >
+                          <svg
+                            class="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            ><path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="3"
+                              d="M5 13l4 4L19 7"
+                            /></svg
+                          >
+                        </div>
+                      {/if}
+                    {/snippet}
+                  </Select.Item>
+                {/each}
+              </Select.Viewport>
+            </Select.Content>
+          </Select.Portal>
+        </Select.Root>
+      </div>
+
+      <hr class="border-gray-200 dark:border-gray-700 my-4" />
+      <h3 class="text-md font-semibold text-gray-800 dark:text-gray-200">
+        Advanced Performance Options
+      </h3>
+
+      <div class="space-y-2">
+        <label
+          for="mode-trigger"
+          class="block text-sm font-semibold text-gray-700 dark:text-gray-300"
+          >Concurrency Mode</label
+        >
+        <Select.Root
+          type="single"
+          bind:value={settings.read_mode}
+          onValueChange={onUpdate}
+          items={readModes}
+        >
+          <Select.Trigger
+            id="mode-trigger"
+            class="inline-flex items-center justify-between w-full px-4 py-2.5 text-sm transition-all border border-gray-300 rounded-lg shadow-sm bg-gray-50 dark:bg-gray-700/50 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <span class="text-gray-900 dark:text-gray-100"
+              >{selectedReadModeLabel}</span
+            >
+            <svg
+              class="w-4 h-4 text-gray-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              ><path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              /></svg
+            >
+          </Select.Trigger>
+          <Select.Portal>
+            <Select.Content
+              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-xl outline-none"
+              sideOffset={4}
+            >
+              <Select.Viewport>
+                {#each readModes as mode}
+                  <Select.Item
+                    value={mode.value}
+                    label={mode.label}
+                    class="relative flex items-center w-full py-2 pl-4 pr-10 text-sm transition-colors rounded-lg cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
+                  >
+                    {#snippet children({ selected })}
+                      {mode.label}
+                      {#if selected}
+                        <div
+                          class="absolute right-3 flex items-center justify-center"
+                        >
+                          <svg
+                            class="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            ><path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="3"
+                              d="M5 13l4 4L19 7"
+                            /></svg
+                          >
+                        </div>
+                      {/if}
+                    {/snippet}
+                  </Select.Item>
+                {/each}
+              </Select.Viewport>
+            </Select.Content>
+          </Select.Portal>
+        </Select.Root>
+      </div>
+
+      <div class="space-y-2">
+        <label
+          for="buffer-trigger"
+          class="block text-sm font-semibold text-gray-700 dark:text-gray-300"
+          >I/O Buffer Size</label
+        >
+        <Select.Root
+          type="single"
+          bind:value={bufferSizeStr}
+          onValueChange={onBufferSizeChange}
+          items={bufferSizes}
+        >
+          <Select.Trigger
+            id="buffer-trigger"
+            class="inline-flex items-center justify-between w-full px-4 py-2.5 text-sm transition-all border border-gray-300 rounded-lg shadow-sm bg-gray-50 dark:bg-gray-700/50 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <span class="text-gray-900 dark:text-gray-100"
+              >{selectedBufferSizeLabel}</span
+            >
+            <svg
+              class="w-4 h-4 text-gray-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              ><path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              /></svg
+            >
+          </Select.Trigger>
+          <Select.Portal>
+            <Select.Content
+              class="z-50 w-(--bits-select-anchor-width) min-w-(--bits-select-anchor-width) p-1 bg-white border border-gray-200 shadow-xl dark:bg-gray-800 dark:border-gray-700 rounded-xl outline-none"
+              sideOffset={4}
+            >
+              <Select.Viewport>
+                {#each bufferSizes as bSize}
+                  <Select.Item
+                    value={bSize.value}
+                    label={bSize.label}
+                    class="relative flex items-center w-full py-2 pl-4 pr-10 text-sm transition-colors rounded-lg cursor-pointer select-none outline-none data-highlighted:bg-blue-50 dark:data-highlighted:bg-blue-900/30 text-gray-700 dark:text-gray-300 data-highlighted:text-blue-700 dark:data-highlighted:text-blue-300"
+                  >
+                    {#snippet children({ selected })}
+                      {bSize.label}
+                      {#if selected}
+                        <div
+                          class="absolute right-3 flex items-center justify-center"
+                        >
+                          <svg
+                            class="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            ><path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="3"
+                              d="M5 13l4 4L19 7"
+                            /></svg
+                          >
+                        </div>
+                      {/if}
+                    {/snippet}
+                  </Select.Item>
+                {/each}
+              </Select.Viewport>
+            </Select.Content>
+          </Select.Portal>
+        </Select.Root>
+      </div>
     </div>
 
     <div
-      class="flex justify-end pt-2 border-t border-gray-100 dark:border-gray-700"
+      class="flex justify-end pt-4 border-t border-gray-100 dark:border-gray-700 mt-auto"
     >
       <button
         class="px-5 py-2 font-medium text-gray-800 transition bg-gray-200 rounded-lg shadow-sm cursor-pointer dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 hover:bg-gray-300"

@@ -32,8 +32,9 @@ pub fn get_settings(app: AppHandle) -> Result<AppSettings, String> {
     let mut path = get_app_dir(&app)?;
     path.push("settings.json");
     if path.exists() {
-        let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
-        Ok(serde_json::from_str(&content).unwrap_or_default())
+        let file = fs::File::open(path).map_err(|e| e.to_string())?;
+        let reader = std::io::BufReader::new(file);
+        Ok(serde_json::from_reader(reader).unwrap_or_default())
     } else {
         Ok(AppSettings::default())
     }
@@ -43,8 +44,9 @@ pub fn get_settings(app: AppHandle) -> Result<AppSettings, String> {
 pub fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
     let mut path = get_app_dir(&app)?;
     path.push("settings.json");
-    let json = serde_json::to_string(&settings).map_err(|e| e.to_string())?;
-    fs::write(path, json).map_err(|e| e.to_string())?;
+    let file = fs::File::create(path).map_err(|e| e.to_string())?;
+    let writer = std::io::BufWriter::new(file);
+    serde_json::to_writer(writer, &settings).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -72,8 +74,9 @@ pub fn get_folder_lists(app: AppHandle) -> Result<Vec<FolderListSummary>, String
                 .map(|e| e == "json")
                 .unwrap_or(false)
             {
-                if let Ok(content) = fs::read_to_string(entry.path()) {
-                    if let Ok(mut list) = serde_json::from_str::<FolderList>(&content) {
+                if let Ok(file) = fs::File::open(entry.path()) {
+                    let reader = std::io::BufReader::new(file);
+                    if let Ok(mut list) = serde_json::from_reader::<_, FolderList>(reader) {
                         list.migrate();
                         let available_algorithms = list.get_available_algorithms();
                         summaries.push(FolderListSummary {
@@ -119,13 +122,24 @@ pub async fn generate_checksums(
         return Err("Path is not a directory".into());
     }
 
+    let settings = get_settings(app.clone()).unwrap_or_default();
+    let read_mode = settings.read_mode.clone();
+    let buffer_size = settings.buffer_size;
+
     state.cancel_flag.store(false, Ordering::Relaxed);
     let cancel = state.cancel_flag.clone();
     let app_handle = app.clone();
 
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let (new_hashes, metadata, total_files) =
-            compute_folder_checksums(&path, &cancel, &app_handle, "Main Folder", &algorithm)?;
+        let (new_hashes, metadata, total_files) = compute_folder_checksums(
+            &path,
+            &cancel,
+            &app_handle,
+            "Main Folder",
+            &algorithm,
+            &read_mode,
+            buffer_size,
+        )?;
 
         let mut structured_hashes = HashMap::new();
         for (p, h) in new_hashes {
@@ -152,8 +166,10 @@ pub async fn generate_checksums(
 
         let mut out_path = get_lists_dir(&app_handle)?;
         out_path.push(format!("{}.json", list.id));
-        let json = serde_json::to_string(&list).map_err(|e| e.to_string())?;
-        fs::write(out_path, json).map_err(|e| e.to_string())?;
+
+        let file = fs::File::create(out_path).map_err(|e| e.to_string())?;
+        let writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(writer, &list).map_err(|e| e.to_string())?;
 
         Ok(())
     })
@@ -170,14 +186,19 @@ pub async fn rehash_folder(
 ) -> Result<(), String> {
     let mut path = get_lists_dir(&app)?;
     path.push(format!("{}.json", id));
-    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let mut saved_list: FolderList = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    let file = fs::File::open(&path).map_err(|e| e.to_string())?;
+    let reader = std::io::BufReader::new(file);
+    let mut saved_list: FolderList = serde_json::from_reader(reader).map_err(|e| e.to_string())?;
     saved_list.migrate();
 
     let target_path_buf = PathBuf::from(&saved_list.path);
     if !target_path_buf.is_dir() {
         return Err("Path is not a directory or is missing".into());
     }
+
+    let settings = get_settings(app.clone()).unwrap_or_default();
+    let read_mode = settings.read_mode.clone();
+    let buffer_size = settings.buffer_size;
 
     state.cancel_flag.store(false, Ordering::Relaxed);
     let cancel = state.cancel_flag.clone();
@@ -190,6 +211,8 @@ pub async fn rehash_folder(
             &app_handle,
             "Main Folder",
             &algorithm,
+            &read_mode,
+            buffer_size,
         )?;
 
         let mut updated_hashes = HashMap::new();
@@ -216,8 +239,9 @@ pub async fn rehash_folder(
 
         let mut out_path = get_lists_dir(&app_handle)?;
         out_path.push(format!("{}.json", id));
-        let json = serde_json::to_string(&list).map_err(|e| e.to_string())?;
-        fs::write(out_path, json).map_err(|e| e.to_string())?;
+        let out_file = fs::File::create(out_path).map_err(|e| e.to_string())?;
+        let writer = std::io::BufWriter::new(out_file);
+        serde_json::to_writer(writer, &list).map_err(|e| e.to_string())?;
 
         Ok(())
     })
@@ -229,11 +253,16 @@ pub async fn rehash_folder(
 pub fn update_backups(app: AppHandle, id: String, backups: Vec<String>) -> Result<(), String> {
     let mut path = get_lists_dir(&app)?;
     path.push(format!("{}.json", id));
-    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let mut list: FolderList = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    let file = fs::File::open(&path).map_err(|e| e.to_string())?;
+    let reader = std::io::BufReader::new(file);
+    let mut list: FolderList = serde_json::from_reader(reader).map_err(|e| e.to_string())?;
+
     list.backups = backups;
-    let json = serde_json::to_string(&list).map_err(|e| e.to_string())?;
-    fs::write(path, json).map_err(|e| e.to_string())?;
+
+    let out_file = fs::File::create(&path).map_err(|e| e.to_string())?;
+    let writer = std::io::BufWriter::new(out_file);
+    serde_json::to_writer(writer, &list).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -241,11 +270,16 @@ pub fn update_backups(app: AppHandle, id: String, backups: Vec<String>) -> Resul
 pub fn update_main_path(app: AppHandle, id: String, new_path: String) -> Result<(), String> {
     let mut path = get_lists_dir(&app)?;
     path.push(format!("{}.json", id));
-    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let mut list: FolderList = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    let file = fs::File::open(&path).map_err(|e| e.to_string())?;
+    let reader = std::io::BufReader::new(file);
+    let mut list: FolderList = serde_json::from_reader(reader).map_err(|e| e.to_string())?;
+
     list.path = new_path;
-    let json = serde_json::to_string(&list).map_err(|e| e.to_string())?;
-    fs::write(path, json).map_err(|e| e.to_string())?;
+
+    let out_file = fs::File::create(&path).map_err(|e| e.to_string())?;
+    let writer = std::io::BufWriter::new(out_file);
+    serde_json::to_writer(writer, &list).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -269,9 +303,15 @@ pub async fn verify_folder_contents(
 ) -> Result<FullVerifyResult, String> {
     let mut path = get_lists_dir(&app)?;
     path.push(format!("{}.json", id));
-    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let mut saved_list: FolderList = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    let file = fs::File::open(&path).map_err(|e| e.to_string())?;
+    let reader = std::io::BufReader::new(file);
+    let mut saved_list: FolderList = serde_json::from_reader(reader).map_err(|e| e.to_string())?;
     saved_list.migrate();
+
+    let settings = get_settings(app.clone()).unwrap_or_default();
+    let read_mode = settings.read_mode.clone();
+    let buffer_size = settings.buffer_size;
 
     state.cancel_flag.store(false, Ordering::Relaxed);
     let cancel = state.cancel_flag.clone();
@@ -287,6 +327,8 @@ pub async fn verify_folder_contents(
             &cancel,
             &app_handle,
             "Main Folder",
+            &read_mode,
+            buffer_size,
         )?;
 
         let mut backups_results = Vec::new();
@@ -301,6 +343,8 @@ pub async fn verify_folder_contents(
                 &cancel,
                 &app_handle,
                 &label,
+                &read_mode,
+                buffer_size,
             )?;
             backups_results.push(BackupVerifyResult {
                 path: backup_path.clone(),

@@ -25,6 +25,8 @@
         return "text-orange-700 bg-orange-50 border-orange-200 dark:text-orange-300 dark:bg-orange-900/30 dark:border-orange-800";
       case "Untracked":
         return "text-purple-700 bg-purple-50 border-purple-200 dark:text-purple-300 dark:bg-purple-900/30 dark:border-purple-800";
+      case "Access Denied":
+        return "text-rose-700 bg-rose-50 border-rose-200 dark:text-rose-300 dark:bg-rose-900/30 dark:border-rose-800";
       default:
         return "text-gray-700 bg-gray-50 border-gray-200 dark:text-gray-300 dark:bg-gray-800 dark:border-gray-700";
     }
@@ -42,6 +44,8 @@
         return "bg-orange-500 dark:bg-orange-400";
       case "Untracked":
         return "bg-purple-500 dark:bg-purple-400";
+      case "Access Denied":
+        return "bg-rose-500 dark:bg-rose-400";
       default:
         return "bg-gray-500 dark:bg-gray-400";
     }
@@ -95,7 +99,7 @@
     <span
       class="ml-2 px-2 py-0.5 rounded text-[11px] font-sans border {getStatusColor(
         node.status,
-      )} flex items-center shadow-sm"
+      )} flex items-center shadow-sm whitespace-nowrap"
     >
       <span class="w-2 h-2 rounded-full mr-1 {getStatusDot(node.status)}"
       ></span>

@@ -32,6 +32,8 @@
     theme: "auto",
     algorithm: "sha256",
     verify_depth: "deep",
+    read_mode: "parallel",
+    buffer_size: 262144,
   });
   let showSettingsDialog = $state(false);
   let themeQueryMedia: MediaQueryList | null = null;
