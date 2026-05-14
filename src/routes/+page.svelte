@@ -82,20 +82,29 @@
   );
 
   onMount(async () => {
-    settings = await invoke("get_settings");
-    applyTheme();
+    try {
+      settings = await invoke("get_settings");
+      applyTheme();
 
-    themeQueryMedia = window.matchMedia("(prefers-color-scheme: dark)");
-    themeQueryMedia.addEventListener("change", applyTheme);
+      themeQueryMedia = window.matchMedia("(prefers-color-scheme: dark)");
+      themeQueryMedia.addEventListener("change", applyTheme);
 
-    await fetchFolderLists();
-    isLoadingFolders = false;
+      await fetchFolderLists();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      isLoadingFolders = false;
+    }
 
     await checkForUpdates();
 
     listen<Progress>("operation_progress", (event) => {
       operationProgress = event.payload;
     });
+
+    setTimeout(() => {
+      invoke("show_main_window").catch(console.error);
+    }, 50);
   });
 
   onDestroy(() => {
@@ -115,9 +124,13 @@
 
     if (isDark) {
       document.documentElement.classList.add("dark");
+      document.documentElement.style.backgroundColor = "#111827";
     } else {
       document.documentElement.classList.remove("dark");
+      document.documentElement.style.backgroundColor = "#f9fafb";
     }
+
+    invoke("set_window_theme", { theme: settings.theme }).catch(() => {});
   }
 
   async function updateSettings() {

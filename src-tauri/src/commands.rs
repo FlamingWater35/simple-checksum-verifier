@@ -9,8 +9,23 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::time::UNIX_EPOCH;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, State, Window};
 use tauri_plugin_opener::OpenerExt;
+
+#[tauri::command]
+pub fn show_main_window(window: Window) {
+    let _ = window.show();
+}
+
+#[tauri::command]
+pub fn set_window_theme(theme: String, window: Window) {
+    let tauri_theme = match theme.as_str() {
+        "dark" => Some(tauri::Theme::Dark),
+        "light" => Some(tauri::Theme::Light),
+        _ => None,
+    };
+    let _ = window.set_theme(tauri_theme);
+}
 
 #[tauri::command]
 pub fn get_settings(app: AppHandle) -> Result<AppSettings, String> {
