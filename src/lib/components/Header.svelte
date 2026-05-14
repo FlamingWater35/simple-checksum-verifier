@@ -21,9 +21,10 @@
   <div class="flex items-center space-x-4">
     {#if updateAvailable}
       <button
-        class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 p-2 rounded-full hover:bg-blue-100 dark:hover:bg-gray-800 transition-colors cursor-pointer relative"
+        class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 p-2 rounded-full hover:bg-blue-100 dark:hover:bg-gray-800 transition-colors cursor-pointer relative disabled:opacity-40 disabled:cursor-not-allowed"
         onclick={onOpenUpdate}
         title="Update Available"
+        disabled={isBusy}
       >
         <svg
           class="w-6 h-6"
@@ -50,7 +51,7 @@
     {/if}
 
     <button
-      class="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+      class="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
       onclick={onOpenSettings}
       disabled={isBusy}
       title="Settings"
